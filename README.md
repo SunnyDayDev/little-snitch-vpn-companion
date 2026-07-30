@@ -1,5 +1,7 @@
 # Little Snitch VPN Companion
 
+[![CI](https://github.com/SunnyDayDev/little-snitch-vpn-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/SunnyDayDev/little-snitch-vpn-companion/actions/workflows/ci.yml)
+
 <img src="App/Assets.xcassets/AppIcon.appiconset/icon_128.png" align="right" width="110" alt="Иконка приложения">
 
 Меню-бар-приложение для macOS, которое следит за **фактическим egress-IP** машины и в
