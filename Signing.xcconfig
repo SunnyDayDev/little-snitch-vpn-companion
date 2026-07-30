@@ -1,0 +1,34 @@
+// Подпись приложения и helper.
+//
+// По умолчанию — ad-hoc ("-"): сборка и запуск работают, но XPC-валидация
+// клиента по code-signing requirement (§10.2 SPEC.md) требует настоящего
+// самоподписанного сертификата: у ad-hoc нет устойчивой identity, только
+// cdhash, меняющийся с каждой сборкой.
+//
+// Как перейти на самоподписанный сертификат (шаг делается вручную,
+// Keychain Access просит пароль):
+//   1. Keychain Access → Certificate Assistant → Create a Certificate…
+//   2. Name: LSVPNCompanion, Identity Type: Self Signed Root,
+//      Certificate Type: Code Signing → Create
+//   3. Проверить: security find-identity -v -p codesigning
+//   4. Заменить строку ниже на: CODE_SIGN_IDENTITY = LSVPNCompanion
+//   5. xcodegen generate && xcodebuild ... (пересобрать оба таргета)
+
+CODE_SIGN_IDENTITY = little-snitch-vpn-companion
+
+// Hardened Runtime: проверено на этой машине — флаг runtime совместим с
+// локальной подписью (codesign --options runtime проходит и с ad-hoc).
+// С identity "-" Xcode сам флаг не проставляет; он появится, как только
+// CODE_SIGN_IDENTITY укажет на реальный сертификат.
+ENABLE_HARDENED_RUNTIME = YES
+
+// Обязательно при самоподписанном сертификате + Hardened Runtime.
+// Hardened Runtime включает library validation, а у самоподписанного
+// сертификата нет Team ID — поэтому отладочная прослойка Xcode
+// («<продукт>.debug.dylib», ENABLE_DEBUG_DYLIB по умолчанию YES) не
+// проходит проверку, и приложение падает при запуске с
+// «mapping process and mapped file (non-platform) have different Team IDs».
+// Проверено на целевой машине 2026-07-30. Альтернатива — энтайтлмент
+// com.apple.security.cs.disable-library-validation — хуже: она ослабила бы
+// проверку загружаемых библиотек в процессе, который ходит к root-демону.
+ENABLE_DEBUG_DYLIB = NO

@@ -1,0 +1,17 @@
+# Xcode
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Генерируется XcodeGen из project.yml
+LittleSnitchVPNCompanion.xcodeproj/
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store

@@ -1,0 +1,148 @@
+name: LittleSnitchVPNCompanion
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "26.0"
+
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    SWIFT_EMIT_LOC_STRINGS: NO
+    DEAD_CODE_STRIPPING: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+
+targets:
+  LittleSnitchVPNCompanion:
+    type: application
+    platform: macOS
+    sources:
+      - App
+      - Application
+      - Domain
+      - Infrastructure
+      - path: Helper/HelperProtocol.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion
+        PRODUCT_NAME: Little Snitch VPN Companion
+        PRODUCT_MODULE_NAME: LittleSnitchVPNCompanion
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Little Snitch VPN Companion
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 sunnyday.dev"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_APP_SANDBOX: NO
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
+    dependencies:
+      - target: Helper
+        link: false
+        embed: false
+    postBuildScripts:
+      - name: Embed privileged helper
+        # Копируем до финальной подписи таргета: бинарь демона в Contents/MacOS,
+        # launchd-plist в Contents/Library/LaunchDaemons (контракт SMAppService.daemon)
+        script: |
+          set -euo pipefail
+          APP_CONTENTS="${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}"
+          mkdir -p "${APP_CONTENTS}/Library/LaunchDaemons" "${APP_CONTENTS}/MacOS"
+          ditto "${BUILT_PRODUCTS_DIR}/dev.sunnyday.lsvpncompanion.helper" \
+                "${APP_CONTENTS}/MacOS/dev.sunnyday.lsvpncompanion.helper"
+          ditto "${SRCROOT}/Helper/dev.sunnyday.lsvpncompanion.helper.plist" \
+                "${APP_CONTENTS}/Library/LaunchDaemons/dev.sunnyday.lsvpncompanion.helper.plist"
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/dev.sunnyday.lsvpncompanion.helper
+          - $(SRCROOT)/Helper/dev.sunnyday.lsvpncompanion.helper.plist
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/dev.sunnyday.lsvpncompanion.helper
+          - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons/dev.sunnyday.lsvpncompanion.helper.plist
+
+  Helper:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Helper
+        excludes:
+          - "Info.plist"
+          - "*.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion.helper
+        PRODUCT_NAME: dev.sunnyday.lsvpncompanion.helper
+        PRODUCT_MODULE_NAME: LSVPNCompanionHelper
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Helper/Info.plist
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
+
+  DomainTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Domain
+      - Tests/DomainTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion.domaintests
+        GENERATE_INFOPLIST_FILE: YES
+
+  ApplicationTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Domain
+      - Application
+      - Tests/ApplicationTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion.applicationtests
+        GENERATE_INFOPLIST_FILE: YES
+
+  HelperTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Helper/RuleGroupModelParser.swift
+      - Tests/HelperTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion.helpertests
+        GENERATE_INFOPLIST_FILE: YES
+
+  InfrastructureTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Domain
+      - Application
+      - Infrastructure
+      - path: Helper/HelperProtocol.swift
+      - Tests/InfrastructureTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion.infrastructuretests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  LittleSnitchVPNCompanion:
+    build:
+      targets:
+        LittleSnitchVPNCompanion: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - DomainTests
+        - ApplicationTests
+        - HelperTests
+        - InfrastructureTests
