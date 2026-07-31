@@ -5,7 +5,7 @@
 1. `main` защищён: изменения попадают только через pull request с зелёным CI
    («Тесты (macOS 26)»), прямые пуши и force-push запрещены даже владельцу.
 2. Проект разрабатывается по **Spec-Driven Development** через
-   [OpenSpec](https://github.com/Fission-AI/OpenSpec): любое изменение логики
+   [OpenSpec](https://openspec.dev): любое изменение логики
    идёт через openspec-процесс и обновляет спеки. Код без обновлённых спек —
    неполное изменение.
 3. Никаких реальных IP-, MAC-адресов и ключей в коммитах — только заполнители
@@ -25,7 +25,7 @@
 ### Процесс изменения логики
 
 Каждое изменение поведения проходит четыре шага (слэш-команды Claude Code из
-`.claude/commands/opsx/`, под капотом — [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)):
+`.claude/commands/opsx/`, под капотом — [OpenSpec CLI](https://openspec.dev)):
 
 1. **`/opsx:propose`** — создать change: `proposal.md` (что и зачем), дельты спек
    `specs/<capability>/spec.md` (какие требования добавляются/меняются),
