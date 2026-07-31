@@ -1,10 +1,11 @@
 /// Reconcile (§5 SPEC.md): фактическое состояние групп LS приводится к
-/// целевому для текущего состояния. Никакой истории — всегда сверка с фактом.
+/// целевому для текущего состояния и режима защиты. Никакой истории — всегда
+/// сверка с фактом.
 struct ApplyPolicy: Sendable {
     enum Outcome: Hashable, Sendable {
         /// Изменений не потребовалось либо они применены.
         case applied(operations: [RuleGroupOperation], missingGroups: [String])
-        /// Состояние не определяет целевой набор (Offline/Paused).
+        /// Состояние не определяет целевой набор (реактивный Offline/Checking/Paused).
         case skippedNoTarget
         /// `observeOnly`: группы намеренно не тронуты.
         case skippedObserveOnly(operations: [RuleGroupOperation])
@@ -17,23 +18,27 @@ struct ApplyPolicy: Sendable {
     let clock: any Clock
 
     func run(state: EgressState, settings: AppSettings) async -> Outcome {
-        guard LeakPolicy.targetEnabledGroups(for: state,
-                                             mapping: settings.mapping) != nil else {
+        guard let target = LeakPolicy.targetEnabledGroups(
+            for: state, mode: settings.protectionMode,
+            mapping: settings.mapping) else {
             return .skippedNoTarget
         }
+        return await run(target: target, settings: settings)
+    }
 
+    /// Привести группы к явной цели, минуя политику состояния: переключение
+    /// режима на лету и закрытие перед завершением приложения не выражаются
+    /// парой «состояние + режим».
+    func run(target: Set<String>, settings: AppSettings) async -> Outcome {
         let actual: [RuleGroup]
         do {
             actual = try await gateway.listRuleGroups()
         } catch {
-            return await fail(error, state: state)
+            return await fail(error)
         }
 
-        guard let plan = LeakPolicy.plan(for: state,
-                                         mapping: settings.mapping,
-                                         actual: actual) else {
-            return .skippedNoTarget
-        }
+        let plan = LeakPolicy.plan(actual: actual, target: target,
+                                   managed: settings.mapping.managedGroups)
 
         for name in plan.missingGroups {
             await journalError("группа «\(name)» не найдена в Little Snitch")
@@ -41,7 +46,13 @@ struct ApplyPolicy: Sendable {
 
         guard !settings.observeOnly else {
             if !plan.isEmpty {
-                await journalAction("режим наблюдения: группы не тронуты (\(describe(plan.operations)))")
+                // ФТ-10: обкатка строгого режима должна быть видна в журнале —
+                // иначе непонятно, когда бы он реально закрыл трафик.
+                let wouldClose = settings.protectionMode == .strict
+                    && plan.operations.contains { $0.enable }
+                await journalAction(wouldClose
+                    ? "строгий режим: закрыл бы группы — наблюдение, не тронуты (\(describe(plan.operations)))"
+                    : "режим наблюдения: группы не тронуты (\(describe(plan.operations)))")
             }
             return .skippedObserveOnly(operations: plan.operations)
         }
@@ -51,14 +62,38 @@ struct ApplyPolicy: Sendable {
                 try await gateway.setRuleGroup(operation.name, enabled: operation.enable)
                 await journalAction("группа «\(operation.name)» \(operation.enable ? "включена" : "выключена")")
             } catch {
-                return await fail(error, state: state)
+                return await fail(error)
             }
         }
 
         return .applied(operations: plan.operations, missingGroups: plan.missingGroups)
     }
 
-    private func fail(_ error: any Error, state: EgressState) async -> Outcome {
+    /// Быстрое безусловное закрытие на завершении приложения: без листинга —
+    /// включение идемпотентно, а бюджет времени на выходе мал (холодный вызов
+    /// helper стоит до 6 с, и листинг+включение в бюджет не влезали). Ошибка
+    /// одной группы не прерывает остальные: закрыть максимум возможного.
+    func forceEnable(groups: [String], settings: AppSettings) async -> Outcome {
+        guard !settings.observeOnly else { return .skippedObserveOnly(operations: []) }
+        var operations: [RuleGroupOperation] = []
+        var lastError: RuleGroupGatewayError?
+        for name in groups {
+            do {
+                try await gateway.setRuleGroup(name, enabled: true)
+                operations.append(RuleGroupOperation(name: name, enable: true))
+                await journalAction("группа «\(name)» включена")
+            } catch {
+                let gatewayError = error as? RuleGroupGatewayError
+                    ?? .helperUnavailable(String(describing: error))
+                await journalError(gatewayError.message)
+                lastError = gatewayError
+            }
+        }
+        if let lastError { return .failed(lastError) }
+        return .applied(operations: operations, missingGroups: [])
+    }
+
+    private func fail(_ error: any Error) async -> Outcome {
         let gatewayError = error as? RuleGroupGatewayError
             ?? .helperUnavailable(String(describing: error))
         await journalError(gatewayError.message)

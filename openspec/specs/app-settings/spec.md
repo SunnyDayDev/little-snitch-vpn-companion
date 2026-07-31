@@ -8,7 +8,7 @@
 
 ### Requirement: Персистентные настройки
 
-Настройки SHALL храниться в `UserDefaults` с ключами: `launchAtLogin`, `monitoringEnabled`, `observeOnly`, `escalationEnabled`, `notifyTransitions`, `notifyErrors`, `heartbeatSeconds`, `probeSeconds`, `probeTimeoutSeconds`, `expectedIPs` ([String]), `leakGroups` ([String]), `forbiddenEgressIPs` ([String], статическая часть denylist), `ruBeaconURL`, `ruBeaconRefreshSeconds`. Динамический прямой РУ-IP SHALL NOT сохраняться в defaults (runtime-значение, сбрасывается при смене сети).
+Настройки SHALL храниться в `UserDefaults` с ключами: `launchAtLogin`, `monitoringEnabled`, `observeOnly`, `escalationEnabled`, `protectionMode` (строка `reactive`/`strict`), `notifyTransitions`, `notifyErrors`, `heartbeatSeconds`, `probeSeconds`, `probeTimeoutSeconds`, `expectedIPs` ([String]), `leakGroups` ([String]), `forbiddenEgressIPs` ([String], статическая часть denylist), `ruBeaconURL`, `ruBeaconRefreshSeconds`. Динамический прямой РУ-IP SHALL NOT сохраняться в defaults (runtime-значение, сбрасывается при смене сети). Нераспознанное значение `protectionMode` SHALL трактоваться как `reactive`.
 
 #### Scenario: Настройка переживает перезапуск
 
@@ -20,14 +20,24 @@
 - **WHEN** приложение перезапущено
 - **THEN** динамический прямой РУ-IP отсутствует до нового ответа РУ-маяка
 
+#### Scenario: Режим защиты переживает перезапуск
+
+- **WHEN** пользователь включил строгий режим и перезапустил приложение
+- **THEN** приложение стартует в строгом режиме (закрытие до первого вердикта)
+
 ### Requirement: Значения по умолчанию
 
-При первом запуске SHALL действовать конфигурация: `monitoringEnabled=true`, `observeOnly=false`, `escalationEnabled=true`, `launchAtLogin=true` (после онбординга), `heartbeatSeconds=15`, `probeSeconds=60`, `probeTimeoutSeconds=6`, подтверждение утечки 2 пробы / 2.5 с, `expectedIPs=[]`, `leakGroups=["VPN down"]` (если группа существует в LS; иначе пусто + подсказка в UI), обе категории уведомлений включены, `ruBeaconURL="https://yandex.ru/internet/api/v0/ip"`, `ruBeaconFallbackURL="https://2ip.ru"`, `ruBeaconRefreshSeconds=300`, `forbiddenEgressIPs` — предзаполненный список серверов инфраструктуры из §13 SPEC.md.
+При первом запуске SHALL действовать конфигурация: `monitoringEnabled=true`, `observeOnly=false`, `escalationEnabled=true`, `protectionMode=reactive`, `launchAtLogin=true` (после онбординга), `heartbeatSeconds=15`, `probeSeconds=60`, `probeTimeoutSeconds=6`, подтверждение утечки 2 пробы / 2.5 с, `expectedIPs=[]`, `leakGroups=["VPN down"]` (если группа существует в LS; иначе пусто + подсказка в UI), обе категории уведомлений включены, `ruBeaconURL="https://yandex.ru/internet/api/v0/ip"`, `ruBeaconFallbackURL="https://2ip.ru"`, `ruBeaconRefreshSeconds=300`, `forbiddenEgressIPs` — предзаполненный список серверов инфраструктуры из §13 SPEC.md. Отсутствие ключа `protectionMode` у существующих пользователей SHALL означать реактивный режим — обновление не меняет поведение молча.
 
 #### Scenario: Дефолтная группа отсутствует в LS
 
 - **WHEN** при первом запуске группа «VPN down» не существует в Little Snitch
 - **THEN** `leakGroups` остаётся пустым и в UI показывается подсказка о создании группы
+
+#### Scenario: Обновление у существующего пользователя
+
+- **WHEN** приложение обновилось на версию с режимами защиты, ключа `protectionMode` в defaults нет
+- **THEN** действует реактивный режим, поведение идентично прежней версии
 
 ### Requirement: Окно настроек с вкладками
 
@@ -42,6 +52,20 @@
 
 - **WHEN** пользователь через редактор списка меняет статический список `FORBIDDEN_EGRESS`
 - **THEN** новый список сохраняется и учитывается ближайшей пробой
+
+### Requirement: Контрол режима защиты
+
+Вкладка «Общие» SHALL содержать карточку «Режим защиты» с выбором из двух значений — «Блокировать при утечке» (реактивный) и «Открывать только при VPN» (строгий) — и поясняющей подписью под выбранным значением. Изменение SHALL применяться немедленно: reconcile по политике нового режима (см. state-machine), синхронизация failsafe-конфигурации helper, запись в журнал.
+
+#### Scenario: Включение строгого режима из настроек
+
+- **WHEN** пользователь переключает режим на «Открывать только при VPN» при текущем вердикте Offline
+- **THEN** группы немедленно включаются, helper получает failsafe-конфигурацию, в журнале появляется запись о переключении
+
+#### Scenario: Подпись объясняет режим
+
+- **WHEN** выбран строгий режим
+- **THEN** подпись под контролом объясняет: трафик открыт только при подтверждённом VPN; пауза, выход и сбой приложения закрывают трафик
 
 ### Requirement: Автозапуск
 

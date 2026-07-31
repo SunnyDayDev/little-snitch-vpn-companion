@@ -1,10 +1,35 @@
 /// Фейки портов: ни один тест Application-слоя не трогает сеть, диск,
 /// уведомления и helper.
 
+import Foundation
+
+/// Мутабельные настройки для тестов «на лету»: провайдер координатора читает
+/// актуальное значение при каждом обращении, как боевой DefaultsSettingsStore.
+final class SettingsHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: AppSettings
+
+    init(_ value: AppSettings) { self.value = value }
+
+    var settings: AppSettings {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set(_ new: AppSettings) {
+        lock.lock()
+        defer { lock.unlock() }
+        value = new
+    }
+}
+
 actor FakeBeacon: BeaconProbing {
     private var queued: [BeaconFetch] = []
     private var fallback: BeaconFetch = .offline(.timeout)
     private(set) var callCount = 0
+    private var holdNext = false
+    private var held: CheckedContinuation<Void, Never>?
 
     init() {}
 
@@ -16,8 +41,23 @@ actor FakeBeacon: BeaconProbing {
         fallback = fetch
     }
 
+    /// Следующая проба подвиснет в полёте до `release()` — для тестов гонок
+    /// «проба против пропажи сети».
+    func holdNextFetch() { holdNext = true }
+
+    var isHolding: Bool { held != nil }
+
+    func release() {
+        held?.resume()
+        held = nil
+    }
+
     func fetchTrace(timeout: Double) async -> BeaconFetch {
         callCount += 1
+        if holdNext {
+            holdNext = false
+            await withCheckedContinuation { held = $0 }
+        }
         return queued.isEmpty ? fallback : queued.removeFirst()
     }
 }
@@ -241,9 +281,11 @@ enum TestData {
         loc=RU
         """
 
-    static func settings(leakGroups: [String] = ["VPN down"]) -> AppSettings {
+    static func settings(leakGroups: [String] = ["VPN down"],
+                         mode: ProtectionMode = .reactive) -> AppSettings {
         var settings = AppSettings()
         settings.leakGroups = leakGroups
+        settings.protectionMode = mode
         settings.forbiddenEgressIPs = ["198.51.100.10"]
         return settings
     }

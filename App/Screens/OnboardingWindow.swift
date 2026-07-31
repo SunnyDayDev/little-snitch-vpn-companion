@@ -52,10 +52,14 @@ struct OnboardingWindow: View {
                 DSStepCard(
                     number: 2,
                     title: "Создать rule group в Little Snitch",
+                    // Текст режимо-нейтральный («когда трафик закрыт» покрывает и
+                    // утечку, и строгий режим) с предупреждением о самозапирании.
                     description: """
                         Группа «VPN down» с deny-правилами для Claude, JetBrains и \
-                        Android Studio. Companion будет включать её при утечке и выключать \
-                        при восстановлении.
+                        Android Studio. Companion включает её, когда трафик закрыт, \
+                        и выключает при подтверждённом VPN. Не включайте в группу \
+                        браузер и VPN-клиент — иначе при закрытом трафике будет \
+                        нечем пройти captive portal и поднять VPN.
                         """,
                     isActive: step == 1,
                     action: .link(title: "Открыть Little Snitch…") {

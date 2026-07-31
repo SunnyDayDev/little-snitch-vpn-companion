@@ -168,6 +168,28 @@ struct StateMachineTests {
         #expect(machine.handle(.pathChanged) == [.probeNow(.path)])
     }
 
+    @Test("Сдвиг пути в реактивном режиме — тишина до вердикта")
+    func pathShiftIsQuietInReactive() {
+        var machine = machine(in: .protected)
+        #expect(machine.handle(.pathShifted).isEmpty)
+        #expect(machine.state == .protected)
+    }
+
+    @Test("Пропажа сети → немедленный Offline, группы не трогаем")
+    func pathDownGoesOfflineImmediately() {
+        var machine = machine(in: .protected)
+        #expect(machine.handle(.pathDown).isEmpty)
+        #expect(machine.state == .offline)
+    }
+
+    @Test("Пропажа сети сбрасывает счётчик подтверждения утечки")
+    func pathDownResetsLeakCounter() {
+        var machine = machine(in: .protected)
+        _ = machine.handle(.probed(leak, trigger: .scheduled))
+        _ = machine.handle(.pathDown)
+        #expect(machine.handle(.probed(leak, trigger: .path)) == [.scheduleLeakConfirmation])
+    }
+
     // MARK: - Пауза
 
     @Test("Пауза: состояние Paused, группы не трогаем")
@@ -283,5 +305,164 @@ struct StateMachineTests {
         _ = machine.handle(.probed(serverLeak, trigger: .confirmation))
         #expect(machine.lastDiagnosis == .forbiddenServer(server))
         #expect(machine.lastTrace?.ip == server)
+    }
+}
+
+/// Строгий режим (§5): открыто ⇔ доказанный Protected. Каждая
+/// режимозависимая строка таблицы переходов — в обоих режимах.
+@Suite("StateMachine — строгий режим")
+struct StrictStateMachineTests {
+    private let egress = IPAddress("203.0.113.40")!
+    private let cloudflare = IPAddress("2a09:bac5::3f")!
+
+    private var leak: ProbeResult {
+        .leakCandidate(BeaconTrace(ip: egress, warp: .off), .foreignEgress)
+    }
+
+    private var protected: ProbeResult {
+        .protected(BeaconTrace(ip: cloudflare, warp: .on))
+    }
+
+    /// Машина после старта и первого Protected-вердикта: группы открыты.
+    private func protectedMachine() -> StateMachine {
+        var machine = StateMachine()
+        _ = machine.handle(.started, mode: .strict)
+        _ = machine.handle(.probed(protected, trigger: .startup), mode: .strict)
+        return machine
+    }
+
+    @Test("Старт: сначала закрыть, потом проба")
+    func startClosesFirst() {
+        var machine = StateMachine()
+        let effects = machine.handle(.started, mode: .strict)
+        #expect(effects == [.reconcile(.checking), .probeNow(.startup)])
+        #expect(machine.state == .checking)
+    }
+
+    @Test("Protected-вердикт — единственная дверь в «открыто»")
+    func onlyProtectedOpens() {
+        var machine = StateMachine()
+        _ = machine.handle(.started, mode: .strict)
+        let effects = machine.handle(.probed(protected, trigger: .startup), mode: .strict)
+        #expect(effects == [.reconcile(.protected)])
+        #expect(machine.state == .protected)
+    }
+
+    @Test("Возврат сети из Offline: Checking, группы остаются закрыты")
+    func pathShiftFromOfflineStaysClosed() {
+        var machine = protectedMachine()
+        _ = machine.handle(.pathDown, mode: .strict)
+        #expect(machine.handle(.pathShifted, mode: .strict) == [.reconcile(.checking)])
+        #expect(machine.state == .checking)
+        #expect(machine.handle(.pathChanged, mode: .strict) == [.probeNow(.path)])
+    }
+
+    @Test("Проверка из открытого состояния не закрывает: вердикт решает")
+    func checksFromProtectedStayOpen() {
+        // События пути и обрывы растяжки часты; превентивное закрытие на
+        // каждую проверку — ощутимые потери запросов при иллюзорной гарантии.
+        var machine = protectedMachine()
+        #expect(machine.handle(.tripwireBroken, mode: .strict) == [.probeNow(.tripwire)])
+        #expect(machine.state == .protected)
+        #expect(machine.handle(.pathShifted, mode: .strict).isEmpty)
+        #expect(machine.state == .protected)
+        // Offline-вердикт проверки закрывает
+        #expect(machine.handle(.probed(.offline(.timeout), trigger: .path), mode: .strict)
+            == [.reconcile(.offline)])
+    }
+
+    @Test("Обрыв растяжки при закрытом состоянии держит закрыто")
+    func tripwireBreakWhileClosedStaysClosed() {
+        var machine = protectedMachine()
+        _ = machine.handle(.pathDown, mode: .strict)
+        let effects = machine.handle(.tripwireBroken, mode: .strict)
+        #expect(effects == [.reconcile(.checking), .probeNow(.tripwire)])
+        #expect(machine.state == .checking)
+    }
+
+    @Test("Сдвиг пути при Leak не размывает статус утечки")
+    func pathShiftKeepsLeak() {
+        var machine = protectedMachine()
+        _ = machine.handle(.probed(leak, trigger: .scheduled), mode: .strict)
+        _ = machine.handle(.probed(leak, trigger: .confirmation), mode: .strict)
+        #expect(machine.state == .leak)
+        #expect(machine.handle(.pathShifted, mode: .strict).isEmpty)
+        #expect(machine.handle(.tripwireBroken, mode: .strict) == [.probeNow(.tripwire)])
+        #expect(machine.state == .leak)
+    }
+
+    @Test("Пропажа сети → Offline с закрывающим reconcile")
+    func pathDownCloses() {
+        var machine = protectedMachine()
+        #expect(machine.handle(.pathDown, mode: .strict) == [.reconcile(.offline)])
+        #expect(machine.state == .offline)
+    }
+
+    @Test("Offline-вердикт закрывает, плановая проба сверяет заново")
+    func offlineVerdictClosesAndVerifies() {
+        var machine = protectedMachine()
+        let entering = machine.handle(.probed(.offline(.timeout), trigger: .tripwire),
+                                      mode: .strict)
+        #expect(entering == [.reconcile(.offline)])
+        // Повторный офлайн без планового триггера — тихо
+        #expect(machine.handle(.probed(.offline(.timeout), trigger: .path),
+                               mode: .strict).isEmpty)
+        // Плановая проба сверяет группы, как в Leak
+        #expect(machine.handle(.probed(.offline(.timeout), trigger: .scheduled),
+                               mode: .strict) == [.reconcile(.offline)])
+    }
+
+    @Test("Сеть вернулась: Checking, открытие только по Protected")
+    func recoveryRequiresProtectedVerdict() {
+        var machine = protectedMachine()
+        _ = machine.handle(.pathDown, mode: .strict)
+        #expect(machine.handle(.pathShifted, mode: .strict) == [.reconcile(.checking)])
+        #expect(machine.state == .checking)
+        // Первый leak-кандидат не открывает и не меняет состояние
+        #expect(machine.handle(.probed(leak, trigger: .path), mode: .strict)
+            == [.scheduleLeakConfirmation])
+        #expect(machine.state == .checking)
+        // Protected открывает
+        #expect(machine.handle(.probed(protected, trigger: .confirmation), mode: .strict)
+            == [.reconcile(.protected)])
+        #expect(machine.state == .protected)
+    }
+
+    @Test("Подтверждённая утечка из Checking")
+    func confirmedLeakFromChecking() {
+        var machine = protectedMachine()
+        _ = machine.handle(.pathDown, mode: .strict)
+        _ = machine.handle(.pathShifted, mode: .strict)
+        #expect(machine.state == .checking)
+        _ = machine.handle(.probed(leak, trigger: .path), mode: .strict)
+        let effects = machine.handle(.probed(leak, trigger: .confirmation), mode: .strict)
+        #expect(effects == [.reconcile(.leak), .notifyLeak(.foreignEgress)])
+        #expect(machine.state == .leak)
+    }
+
+    @Test("Пауза закрывает группы")
+    func pauseCloses() {
+        var machine = protectedMachine()
+        #expect(machine.handle(.userPaused, mode: .strict) == [.reconcile(.paused)])
+        #expect(machine.state == .paused)
+    }
+
+    @Test("Возобновление: Checking, сверка и открытие только после вердикта")
+    func resumeStaysClosedUntilVerdict() {
+        var machine = protectedMachine()
+        _ = machine.handle(.userPaused, mode: .strict)
+        let effects = machine.handle(.userResumed, mode: .strict)
+        #expect(effects == [.reconcile(.checking), .probeNow(.user)])
+        #expect(machine.state == .checking)
+        #expect(machine.handle(.probed(protected, trigger: .user), mode: .strict)
+            == [.reconcile(.protected)])
+    }
+
+    @Test("Отказ helper при Offline/Checking не эскалирует")
+    func helperFailureWhileClosedDoesNotEscalate() {
+        var machine = protectedMachine()
+        _ = machine.handle(.pathDown, mode: .strict)
+        let effects = machine.handle(.helperFailed("нет связи"), mode: .strict)
+        #expect(effects == [.notifyHelperFailure("нет связи")])
     }
 }

@@ -42,11 +42,45 @@ struct LeakPolicyTests {
         #expect(protectedPlan.isEmpty)
     }
 
-    @Test("Offline и Paused не дают плана вовсе")
+    @Test("Offline, Checking и Paused не дают плана вовсе")
     func noPlanForOfflineAndPaused() {
         let actual = [RuleGroup(name: "VPN down", enabled: true)]
         #expect(LeakPolicy.plan(for: .offline, mapping: mapping, actual: actual) == nil)
+        #expect(LeakPolicy.plan(for: .checking, mapping: mapping, actual: actual) == nil)
         #expect(LeakPolicy.plan(for: .paused, mapping: mapping, actual: actual) == nil)
+    }
+
+    // MARK: - Строгий режим
+
+    @Test("Строгий режим: открыто только при Protected")
+    func strictTargetsPerState() {
+        #expect(LeakPolicy.targetEnabledGroups(for: .protected, mode: .strict,
+                                               mapping: mapping) == [])
+        for state in [EgressState.leak, .offline, .checking, .paused] {
+            #expect(LeakPolicy.targetEnabledGroups(for: state, mode: .strict,
+                                                   mapping: mapping) == ["VPN down"])
+        }
+    }
+
+    @Test("Строгий режим: Offline включает выключенную группу")
+    func strictOfflineCloses() throws {
+        let plan = try #require(LeakPolicy.plan(
+            for: .offline, mode: .strict, mapping: mapping,
+            actual: [RuleGroup(name: "VPN down", enabled: false)]))
+        #expect(plan.operations == [RuleGroupOperation(name: "VPN down", enable: true)])
+    }
+
+    @Test("Строгий режим: Protected выключает, закрытое состояние идемпотентно")
+    func strictProtectedOpens() throws {
+        let open = try #require(LeakPolicy.plan(
+            for: .protected, mode: .strict, mapping: mapping,
+            actual: [RuleGroup(name: "VPN down", enabled: true)]))
+        #expect(open.operations == [RuleGroupOperation(name: "VPN down", enable: false)])
+
+        let closed = try #require(LeakPolicy.plan(
+            for: .checking, mode: .strict, mapping: mapping,
+            actual: [RuleGroup(name: "VPN down", enabled: true)]))
+        #expect(closed.isEmpty)
     }
 
     @Test("Чужие группы не трогаются никогда")

@@ -9,6 +9,7 @@ import os
 struct DefaultsSettingsStore: SettingsStore, @unchecked Sendable {
     enum Key: String, CaseIterable {
         case launchAtLogin, monitoringEnabled, observeOnly, escalationEnabled
+        case protectionMode
         case notifyTransitions, notifyErrors
         case heartbeatSeconds, probeSeconds, probeTimeoutSeconds
         case leakConfirmationSeconds, pathDebounceSeconds
@@ -34,6 +35,7 @@ struct DefaultsSettingsStore: SettingsStore, @unchecked Sendable {
             Key.monitoringEnabled.rawValue: fallback.monitoringEnabled,
             Key.observeOnly.rawValue: fallback.observeOnly,
             Key.escalationEnabled.rawValue: fallback.escalationEnabled,
+            Key.protectionMode.rawValue: fallback.protectionMode.rawValue,
             Key.notifyTransitions.rawValue: fallback.notifyTransitions,
             Key.notifyErrors.rawValue: fallback.notifyErrors,
             Key.heartbeatSeconds.rawValue: fallback.heartbeatSeconds,
@@ -57,6 +59,9 @@ struct DefaultsSettingsStore: SettingsStore, @unchecked Sendable {
         settings.monitoringEnabled = defaults.bool(forKey: Key.monitoringEnabled.rawValue)
         settings.observeOnly = defaults.bool(forKey: Key.observeOnly.rawValue)
         settings.escalationEnabled = defaults.bool(forKey: Key.escalationEnabled.rawValue)
+        // Нераспознанное значение — реактивный режим: безопасный дефолт.
+        settings.protectionMode = defaults.string(forKey: Key.protectionMode.rawValue)
+            .flatMap(ProtectionMode.init(rawValue:)) ?? .reactive
         settings.notifyTransitions = defaults.bool(forKey: Key.notifyTransitions.rawValue)
         settings.notifyErrors = defaults.bool(forKey: Key.notifyErrors.rawValue)
 
@@ -88,6 +93,7 @@ struct DefaultsSettingsStore: SettingsStore, @unchecked Sendable {
         defaults.set(settings.monitoringEnabled, forKey: Key.monitoringEnabled.rawValue)
         defaults.set(settings.observeOnly, forKey: Key.observeOnly.rawValue)
         defaults.set(settings.escalationEnabled, forKey: Key.escalationEnabled.rawValue)
+        defaults.set(settings.protectionMode.rawValue, forKey: Key.protectionMode.rawValue)
         defaults.set(settings.notifyTransitions, forKey: Key.notifyTransitions.rawValue)
         defaults.set(settings.notifyErrors, forKey: Key.notifyErrors.rawValue)
 

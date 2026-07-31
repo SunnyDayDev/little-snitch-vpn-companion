@@ -24,6 +24,7 @@ enum DSColor {
     static let muted = dynamic("muted", light: "#8E8E93", dark: "#8E8E93")
     static let okBg = dynamic("ok-bg", light: "#34C75914", dark: "#30D15820")
     static let dangerBg = dynamic("danger-bg", light: "#FF3B3012", dark: "#FF453A22")
+    static let warnBg = dynamic("warn-bg", light: "#FF950014", dark: "#FF9F0A20")
 
     /// Светофор окна: нативные цвета кнопок закрытия/сворачивания/раскрытия macOS,
     /// одинаковые в обеих темах — не берём из таблицы §8.1 (там их нет).

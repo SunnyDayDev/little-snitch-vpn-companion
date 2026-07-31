@@ -60,6 +60,8 @@ enum RuleGroupGatewayError: Error, Hashable {
     /// отдельный от одобрения helper). Проверено на целевой машине:
     /// `Error: command line tool is not authorized to make changes.`
     case cliNotAuthorized
+    /// Helper не принял failsafe-конфиг (не расшифровал или не сохранил).
+    case failsafeRejected(String)
 
     var message: String {
         switch self {
@@ -68,6 +70,7 @@ enum RuleGroupGatewayError: Error, Hashable {
         case .unparsableModel(let text): "не удалось разобрать модель LS: \(text)"
         case .cliNotAuthorized:
             "Little Snitch не разрешает доступ своему CLI — включи его в Little Snitch → Настройки → Безопасность"
+        case .failsafeRejected(let text): "helper не принял failsafe-конфиг: \(text)"
         }
     }
 
@@ -88,6 +91,14 @@ protocol RuleGroupGateway: Sendable {
     func helperVersion() async throws -> String
     func listRuleGroups() async throws -> [RuleGroup]
     func setRuleGroup(_ name: String, enabled: Bool) async throws
+}
+
+/// Синхронизация failsafe-конфига helper (D5): dead-man's switch и закрытие
+/// на загрузке ОС живут в helper и узнают о режиме только этой операцией.
+/// Отдельный порт, а не расширение `RuleGroupGateway`: реактивным use cases
+/// failsafe не нужен.
+protocol FailsafeSyncing: Sendable {
+    func syncFailsafe(_ config: FailsafeConfig) async throws
 }
 
 protocol WifiPowerGateway: Sendable {

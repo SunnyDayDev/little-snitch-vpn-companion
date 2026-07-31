@@ -59,17 +59,22 @@ struct HelperInstaller: Sendable {
     /// `unregister()` завершается асинхронно: если сразу вызвать `register()`,
     /// снятие регистрации отменит её, и демон останется незарегистрированным
     /// вовсе. Поэтому ждём фактического `.notRegistered`.
-    func reinstall() async throws {
+    /// `forceFullCycle` пропускает мягкий путь: нужен, когда `register()`
+    /// формально успешен, а слушателя в launchd нет (job выгрузили вручную
+    /// через `launchctl bootout` — база SMAppService об этом не знает).
+    func reinstall(forceFullCycle: Bool = false) async throws {
         if service.status != .notRegistered {
-            do {
-                try service.register()
-                logger.log("регистрация helper обновлена без снятия")
-                return
-            } catch {
-                logger.log("""
-                    повторная регистрация не прошла \
-                    (\(String(describing: error), privacy: .public)) — снимаем и ставим заново
-                    """)
+            if !forceFullCycle {
+                do {
+                    try service.register()
+                    logger.log("регистрация helper обновлена без снятия")
+                    return
+                } catch {
+                    logger.log("""
+                        повторная регистрация не прошла \
+                        (\(String(describing: error), privacy: .public)) — снимаем и ставим заново
+                        """)
+                }
             }
             try? await service.unregister()
             await waitForUnregistration()

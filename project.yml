@@ -28,6 +28,7 @@ targets:
       - Domain
       - Infrastructure
       - path: Helper/HelperProtocol.swift
+      - path: Helper/FailsafeConfig.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion
@@ -100,6 +101,8 @@ targets:
     sources:
       - Domain
       - Application
+      # Ports.swift ссылается на FailsafeConfig — тип шарится с helper
+      - path: Helper/FailsafeConfig.swift
       - Tests/ApplicationTests
     settings:
       base:
@@ -111,6 +114,11 @@ targets:
     platform: macOS
     sources:
       - path: Helper/RuleGroupModelParser.swift
+      # Failsafe-логика тестируется без XPC: типы + константы helper
+      - path: Helper/HelperProtocol.swift
+      - path: Helper/FailsafeConfig.swift
+      - path: Helper/FailsafeStore.swift
+      - path: Helper/FailsafeSupervisor.swift
       - Tests/HelperTests
     settings:
       base:
@@ -125,6 +133,7 @@ targets:
       - Application
       - Infrastructure
       - path: Helper/HelperProtocol.swift
+      - path: Helper/FailsafeConfig.swift
       - Tests/InfrastructureTests
     settings:
       base:

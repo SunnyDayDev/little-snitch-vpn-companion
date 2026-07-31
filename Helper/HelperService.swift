@@ -1,15 +1,23 @@
 import Foundation
 import os
 
-/// Реализация XPC-контракта. Ровно три операции; ничего, кроме них, helper
+/// Реализация XPC-контракта. Ровно четыре операции; ничего, кроме них, helper
 /// делать не умеет.
 final class HelperService: NSObject, HelperProtocol {
     private let cli = LittleSnitchCLI()
+    private let failsafe: FailsafeStore
+    private let supervisor: FailsafeSupervisor
     private let logger = Logger(subsystem: HelperConstants.machServiceName, category: "service")
 
     private static let executablePath = HelperConstants.currentExecutablePath()
     /// Отпечаток бинаря на момент запуска демона.
     private static let launchedVersion = HelperConstants.version(ofExecutableAt: executablePath)
+
+    init(failsafe: FailsafeStore, supervisor: FailsafeSupervisor) {
+        self.failsafe = failsafe
+        self.supervisor = supervisor
+        super.init()
+    }
 
     func version(reply: @escaping @Sendable (String) -> Void) {
         reply(Self.launchedVersion)
@@ -50,6 +58,27 @@ final class HelperService: NSObject, HelperProtocol {
             reply(false, message)
         }
     }
+
+    func setFailsafe(_ config: Data,
+                     reply: @escaping @Sendable (Bool, String?) -> Void) {
+        defer { quitIfBinaryChanged() }
+        do {
+            let decoded = try JSONDecoder().decode(FailsafeConfig.self, from: config)
+            // Сначала персист: конфиг обязан пережить перезапуск helper даже
+            // если супервизор до срабатывания не доживёт.
+            try failsafe.save(decoded)
+            supervisor.apply(decoded)
+            logger.log("""
+                failsafe: strict \(decoded.strictActive ? "активен" : "неактивен", privacy: .public), \
+                групп: \(decoded.groups.count, privacy: .public)
+                """)
+            reply(true, nil)
+        } catch {
+            let message = String(describing: error)
+            logger.error("не удалось принять failsafe-конфиг: \(message, privacy: .public)")
+            reply(false, message)
+        }
+    }
 }
 
 /// Делегат listener'а: пускает только клиента, удовлетворяющего
@@ -57,6 +86,14 @@ final class HelperService: NSObject, HelperProtocol {
 final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
     private let requirement = ClientRequirement.build()
     private let logger = Logger(subsystem: HelperConstants.machServiceName, category: "listener")
+    private let failsafe: FailsafeStore
+    private let supervisor: FailsafeSupervisor
+
+    init(failsafe: FailsafeStore, supervisor: FailsafeSupervisor) {
+        self.failsafe = failsafe
+        self.supervisor = supervisor
+        super.init()
+    }
 
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
@@ -73,7 +110,11 @@ final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
         }
 
         connection.exportedInterface = NSXPCInterface(with: HelperProtocol.self)
-        connection.exportedObject = HelperService()
+        connection.exportedObject = HelperService(failsafe: failsafe, supervisor: supervisor)
+        // Dead-man's switch (D5): пропажа последнего клиента при активном
+        // строгом режиме взводит таймер закрытия групп.
+        connection.invalidationHandler = { [supervisor] in supervisor.clientDisconnected() }
+        supervisor.clientConnected()
         connection.resume()
         logger.debug("клиент принят (strict: \(self.requirement.isStrict, privacy: .public))")
         return true

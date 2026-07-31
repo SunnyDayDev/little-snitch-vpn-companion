@@ -6,10 +6,19 @@ struct StateMachine {
         case started
         case probed(ProbeResult, trigger: ProbeTrigger)
         case tripwireBroken
+        /// Путь изменился, сеть жива — событие приходит немедленно, до debounce:
+        /// в строгом режиме закрыться нужно раньше, чем уйдёт проба.
+        case pathShifted
+        /// Путь изменился (после debounce) — пора пробовать.
         case pathChanged
+        /// Сеть пропала (path unsatisfied): немедленный Offline без пробы.
+        case pathDown
         case userPaused
         case userResumed
         case userRequestedProbe
+        /// Режим защиты переключён на лету; переходный reconcile делает
+        /// координатор (цель не выражается парой «состояние + режим»).
+        case modeSwitched
         case helperFailed(String)
         case helperRecovered
     }
@@ -43,37 +52,80 @@ struct StateMachine {
         self.state = state
     }
 
-    mutating func handle(_ event: Event) -> [Effect] {
+    mutating func handle(_ event: Event, mode: ProtectionMode = .reactive) -> [Effect] {
         switch event {
         case .started:
             needsReconcile = true
-            return [.probeNow(.startup)]
+            guard mode == .strict else { return [.probeNow(.startup)] }
+            // Строгий режим: закрыто до первого вердикта — сначала блок,
+            // потом проба (§5, строка «старт»).
+            state = .checking
+            return [.reconcile(.checking), .probeNow(.startup)]
 
         case .probed(let result, let trigger):
-            return handleProbe(result, trigger: trigger)
+            return handleProbe(result, trigger: trigger, mode: mode)
 
         case .tripwireBroken:
             guard state != .paused else { return [] }
-            return [.probeNow(.tripwire)]
+            // Из устойчивого Protected проверка не закрывает превентивно:
+            // события пути и обрывы растяжки часты, вердикт всё равно может
+            // протухнуть сразу после проверки, а каждое закрытие — потерянные
+            // запросы. Закрытым остаётся то, что уже закрыто (Offline/Checking).
+            guard mode == .strict, state == .offline || state == .checking else {
+                return [.probeNow(.tripwire)]
+            }
+            state = .checking
+            return [.reconcile(.checking), .probeNow(.tripwire)]
+
+        case .pathShifted:
+            // Закрытие здесь — только удержание уже закрытого: сеть вернулась
+            // после Offline → Checking, группы остаются включены до вердикта
+            // Protected. Из устойчивого Protected смена пути не закрывает
+            // (см. .tripwireBroken); Leak решает свежая проба.
+            guard mode == .strict, state == .offline || state == .checking else { return [] }
+            state = .checking
+            return [.reconcile(.checking)]
 
         case .pathChanged:
             guard state != .paused else { return [] }
             return [.probeNow(.path)]
 
+        case .pathDown:
+            guard state != .paused else { return [] }
+            consecutiveLeakProbes = 0
+            lastDiagnosis = nil
+            state = .offline
+            // Реактивный: сети нет, утечки нет, группы не трогаем.
+            return mode == .strict ? [.reconcile(.offline)] : []
+
         case .userRequestedProbe:
             return [.probeNow(.user)]
 
+        case .modeSwitched:
+            // Checking существует только в строгом режиме.
+            if mode == .reactive, state == .checking { state = .offline }
+            needsReconcile = true
+            return state == .paused ? [] : [.probeNow(.user)]
+
         case .userPaused:
-            // Группы не трогаем: пауза не снимает уже применённый блок.
             state = .paused
             consecutiveLeakProbes = 0
-            return []
+            // Реактивный: пауза не снимает уже применённый блок, группы не
+            // трогаем. Строгий: пауза закрывает; координатор обязан исполнить
+            // эффект ДО остановки детектора.
+            return mode == .strict ? [.reconcile(.paused)] : []
 
         case .userResumed:
             guard state == .paused else { return [] }
-            state = .offline
             needsReconcile = true
-            return [.probeNow(.user)]
+            guard mode == .strict else {
+                state = .offline
+                return [.probeNow(.user)]
+            }
+            // Группы уже закрыты паузой; сверка дешёвая и держит инвариант,
+            // если их успели переключить руками в Little Snitch.
+            state = .checking
+            return [.reconcile(.checking), .probeNow(.user)]
 
         case .helperFailed(let message):
             let wasUnavailable = helperUnavailable
@@ -105,7 +157,8 @@ struct StateMachine {
     }
 
     private mutating func handleProbe(_ result: ProbeResult,
-                                      trigger: ProbeTrigger) -> [Effect] {
+                                      trigger: ProbeTrigger,
+                                      mode: ProtectionMode) -> [Effect] {
         guard state != .paused else { return [] }
 
         switch result {
@@ -149,9 +202,17 @@ struct StateMachine {
         case .offline:
             consecutiveLeakProbes = 0
             lastDiagnosis = nil
-            // Группы не трогаем: сети нет, утечки нет.
+            let previous = state
             state = .offline
-            return []
+            // Реактивный: группы не трогаем — сети нет, утечки нет.
+            guard mode == .strict else { return [] }
+            // Строгий: offline закрыт. Сверка — при входе и на плановых
+            // пробах (та же логика, что у Leak: helper мог умереть, группу
+            // могли выключить руками).
+            let verifies = trigger == .scheduled || trigger == .startup
+            guard previous != .offline || needsReconcile || verifies else { return [] }
+            needsReconcile = false
+            return [.reconcile(.offline)]
         }
     }
 }

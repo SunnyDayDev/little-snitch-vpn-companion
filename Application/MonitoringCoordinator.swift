@@ -50,6 +50,11 @@ actor MonitoringCoordinator {
     /// Детектору разрешено действовать. Сбрасывается в stop()/pause(), чтобы
     /// уже запущенные эффекты не трогали группы LS после остановки.
     private var isActive = true
+    /// Приложение завершается: группы закрыты, ничто не должно открыть их.
+    private var isTerminating = false
+    /// Ретрай закрывающего reconcile, провалившегося при паузе: событий
+    /// детектора на паузе нет, и без ретрая needsReconcile мёртв.
+    private var pausedCloseRetry: Task<Void, Never>?
     private var startedHeartbeatSeconds: Double?
     private var observers: [Int: @Sendable (MonitoringSnapshot) -> Void] = [:]
     private var nextObserverID = 0
@@ -100,13 +105,16 @@ actor MonitoringCoordinator {
         isRunning = true
         isActive = true
         await startDetectorLayers()
-        await execute(machine.handle(.started))
+        // В строгом режиме эффекты старта закрывают группы ДО первой пробы.
+        await dispatch(.started, trigger: .startup)
         await refreshDirectIP()
     }
 
     func stop() async {
         isRunning = false
         isActive = false
+        pausedCloseRetry?.cancel()
+        pausedCloseRetry = nil
         await stopDetectorLayers()
     }
 
@@ -176,7 +184,7 @@ actor MonitoringCoordinator {
     func handleTripwireBreak() async {
         guard isActive else { return }
         await journalFact(.tripwire, "растяжка оборвалась")
-        await execute(machine.handle(.tripwireBroken))
+        await execute(machine.handle(.tripwireBroken, mode: settings.protectionMode))
     }
 
     func handlePathChange(_ info: NetworkPathInfo) async {
@@ -188,24 +196,45 @@ actor MonitoringCoordinator {
         publish()
         await tripwire.networkPathChanged()
 
-        // Debounce шквала событий: проба уходит только от самого свежего.
         pathGeneration += 1
         let generation = pathGeneration
+        // Вердикт пробы, запущенной до смены сети, описывает прошлую сеть и
+        // больше не авторитетен: поздний protected открыл бы группы уже после
+        // закрытия (или на непроверенной сети). Свежую пробу запустит debounce.
+        probeGeneration += 1
+
+        guard info.isSatisfied else {
+            // Сеть пропала: немедленный Offline без debounce и пробы.
+            await journalFact(.path, "сеть пропала: \(info.interfaceDescription)")
+            await dispatch(.pathDown, trigger: .path)
+            return
+        }
+
+        // Строгий режим закрывается сразу, не дожидаясь debounce и вердикта.
+        await dispatch(.pathShifted, trigger: .path)
+
+        // Debounce шквала событий: проба уходит только от самого свежего.
         await clock.sleep(seconds: settings.pathDebounceSeconds)
         guard generation == pathGeneration else { return }
 
         await journalFact(.path, "сетевой путь изменился: \(info.interfaceDescription)")
-        await execute(machine.handle(.pathChanged))
+        await execute(machine.handle(.pathChanged, mode: settings.protectionMode))
         await refreshDirectIP()
     }
 
-    /// Действие пользователя «Проверить сейчас».
+    /// Действие пользователя «Проверить сейчас». Без работающего детектора
+    /// одиночная проба запрещена: её protected-вердикт открыл бы группы,
+    /// за которыми дальше никто не следит (инвариант «…и мониторинг активен»).
     func probeNowByUser() async {
-        await execute(machine.handle(.userRequestedProbe))
+        guard isRunning else { return }
+        await execute(machine.handle(.userRequestedProbe, mode: settings.protectionMode))
     }
 
     func pause() async {
-        await execute(machine.handle(.userPaused))
+        // Порядок принципиален для строгого режима: закрывающий reconcile
+        // из эффектов паузы обязан пройти ДО сброса isActive — гейт в
+        // reconcile() иначе его проглотит.
+        await execute(machine.handle(.userPaused, mode: settings.protectionMode))
         await journalTransition(to: .paused, trigger: .user, action: "мониторинг на паузе")
         syncSnapshotFromMachine()
         // §5: «детектор остановить» — иначе растяжка, пробы и РУ-маяк
@@ -213,10 +242,39 @@ actor MonitoringCoordinator {
         isRunning = false
         isActive = false
         await stopDetectorLayers()
+        // Закрытие могло провалиться (helper недоступен), а событий, которые
+        // повторили бы reconcile, на паузе больше не будет — ретраим сами.
+        if settings.protectionMode == .strict, !snapshotValue.groupsStateKnown {
+            startPausedCloseRetry()
+        }
+    }
+
+    /// Пока пауза в строгом режиме не закрыта фактически, каждые 20 с
+    /// повторяем закрывающий reconcile — до успеха или возобновления.
+    private func startPausedCloseRetry() {
+        pausedCloseRetry?.cancel()
+        pausedCloseRetry = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                await self.clock.sleep(seconds: 20)
+                guard !Task.isCancelled else { return }
+                if await self.retryPausedClose() { return }
+            }
+        }
+    }
+
+    /// true — закрыто (или ретрай больше не актуален).
+    private func retryPausedClose() async -> Bool {
+        guard machine.state == .paused, !isTerminating,
+              settings.protectionMode == .strict else { return true }
+        await process(applyPolicy.run(target: settings.mapping.managedGroups,
+                                      settings: settings),
+                      targetCloses: true)
+        return snapshotValue.groupsStateKnown
     }
 
     func resume() async {
-        await journalTransition(to: .offline, trigger: .user, action: "мониторинг возобновлён")
+        pausedCloseRetry?.cancel()
+        pausedCloseRetry = nil
         isActive = true
         if !isRunning {
             isRunning = true
@@ -224,7 +282,13 @@ actor MonitoringCoordinator {
         }
         // Мониторинг могли включить тумблером, ни разу не запускав детектор:
         // тогда это старт, а не снятие паузы.
-        await execute(machine.handle(machine.state == .paused ? .userResumed : .started))
+        let event: StateMachine.Event = machine.state == .paused ? .userResumed : .started
+        let previous = machine.state
+        let effects = machine.handle(event, mode: settings.protectionMode)
+        await journalTransition(from: previous, to: machine.state, trigger: .user,
+                                action: "мониторинг возобновлён")
+        syncSnapshotFromMachine()
+        await execute(effects)
         await refreshDirectIP()
     }
 
@@ -233,6 +297,61 @@ actor MonitoringCoordinator {
     func reconcileNow() async {
         guard isActive else { return }
         await reconcile(machine.state)
+    }
+
+    /// Режим защиты переключён (новое значение уже в настройках). Переходная
+    /// цель: «реактивный → строгий» закрывает всё, кроме Protected; «строгий →
+    /// реактивный» открывает всё, кроме Leak — реактивная политика Offline и
+    /// Paused не трогает, и без явного открытия пользователь остался бы заперт.
+    func protectionModeChanged() async {
+        // Приложение завершается: группы уже закрыты prepareForTermination(),
+        // и отставший переходный reconcile не должен открыть их обратно.
+        guard !isTerminating else { return }
+        let mode = settings.protectionMode
+        await journal.append(JournalEvent(time: await clock.now(), kind: .action(
+            mode == .strict
+                ? "режим защиты: строгий — открыто только при подтверждённом VPN"
+                : "режим защиты: реактивный — блок только при подтверждённой утечке")))
+
+        let target = LeakPolicy.targetEnabledGroups(for: machine.state, mode: mode,
+                                                    mapping: settings.mapping) ?? []
+        await process(applyPolicy.run(target: target, settings: settings),
+                      targetCloses: !target.isEmpty)
+
+        // Checking существует только в строгом режиме: возврат в реактивный
+        // нормализует его в Offline; свежая проба заново установит состояние.
+        // Без работающего детектора пробу не запускаем: её одиночный
+        // protected-вердикт открыл бы группы без дальнейшего надзора.
+        guard isRunning else { return }
+        await dispatch(.modeSwitched, trigger: .user)
+    }
+
+    /// Завершение приложения (Cmd-Q, logout, выключение): в строгом режиме
+    /// группы закрываются перед смертью — Little Snitch персистит их состояние,
+    /// так что следующая загрузка начнётся закрытой.
+    func prepareForTermination() async {
+        // Никакая отставшая работа (поздний вердикт, переключение режима,
+        // ретрай паузы) не должна открыть группы после этой точки.
+        isTerminating = true
+        pausedCloseRetry?.cancel()
+        pausedCloseRetry = nil
+        guard settings.protectionMode == .strict else { return }
+        isActive = false
+        isRunning = false
+        // Без листинга: бюджет завершения мал, а включение идемпотентно.
+        let outcome = await applyPolicy.forceEnable(groups: settings.leakGroups,
+                                                    settings: settings)
+        switch outcome {
+        case .applied:
+            await journal.append(JournalEvent(time: await clock.now(),
+                                              kind: .action("группы закрыты: завершение приложения")))
+        case .failed(let error):
+            await journal.append(JournalEvent(time: await clock.now(),
+                                              kind: .warning("не удалось закрыть при завершении: \(error.message) "
+                                                  + "— страховка: dead-man's switch helper")))
+        case .skippedNoTarget, .skippedObserveOnly:
+            break
+        }
     }
 
     // MARK: - Пробы
@@ -253,7 +372,8 @@ actor MonitoringCoordinator {
         snapshotValue.lastCheck = await clock.now()
         snapshotValue.lastTrigger = trigger
 
-        let effects = machine.handle(.probed(result, trigger: trigger))
+        let effects = machine.handle(.probed(result, trigger: trigger),
+                                     mode: settings.protectionMode)
         syncSnapshotFromMachine()
 
         if machine.state != previousState {
@@ -317,6 +437,18 @@ actor MonitoringCoordinator {
 
     // MARK: - Исполнение эффектов
 
+    /// Отправляет событие в машину, журналируя переход состояния, если он
+    /// случился, и публикуя снапшот до исполнения эффектов.
+    private func dispatch(_ event: StateMachine.Event, trigger: ProbeTrigger) async {
+        let previous = machine.state
+        let effects = machine.handle(event, mode: settings.protectionMode)
+        if machine.state != previous {
+            await journalTransition(from: previous, to: machine.state, trigger: trigger)
+        }
+        syncSnapshotFromMachine()
+        await execute(effects)
+    }
+
     private func execute(_ effects: [StateMachine.Effect]) async {
         for effect in effects {
             switch effect {
@@ -360,14 +492,26 @@ actor MonitoringCoordinator {
         guard isActive else { return }
 
         let settings = settings
-        let outcome = await applyPolicy.run(state: state, settings: settings)
+        let closes = LeakPolicy.targetEnabledGroups(
+            for: state, mode: settings.protectionMode,
+            mapping: settings.mapping)?.isEmpty == false
+        await process(applyPolicy.run(state: state, settings: settings),
+                      targetCloses: closes)
+    }
+
+    /// Общая обработка исхода reconcile: снапшот, восстановление helper,
+    /// уведомление о несуществующих группах.
+    private func process(_ outcome: ApplyPolicy.Outcome, targetCloses: Bool) async {
+        let settings = settings
         switch outcome {
         case .applied(_, let missingGroups):
             if machine.helperUnavailable {
-                await execute(machine.handle(.helperRecovered))
+                await execute(machine.handle(.helperRecovered, mode: settings.protectionMode))
             }
             snapshotValue.groupsStateKnown = true
-            snapshotValue.activeLeakGroups = state == .leak
+            // Группы активны всякий раз, когда цель их включает: в строгом
+            // режиме это не только Leak, но и Offline/Checking/Paused.
+            snapshotValue.activeLeakGroups = targetCloses
                 ? settings.leakGroups.filter { !missingGroups.contains($0) }
                 : []
             // ФТ-5: об ошибке переключения группы надо уведомлять, а не только
@@ -390,7 +534,8 @@ actor MonitoringCoordinator {
         case .failed(let error):
             // Фактическое состояние групп неизвестно: reconcile не дошёл.
             snapshotValue.groupsStateKnown = false
-            await execute(machine.handle(.helperFailed(error.message)))
+            await execute(machine.handle(.helperFailed(error.message),
+                                         mode: settings.protectionMode))
         }
         syncSnapshotFromMachine()
     }

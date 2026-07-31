@@ -3,7 +3,7 @@ import os
 
 /// XPC-клиент к привилегированному helper. Соединение поднимается лениво и
 /// переустанавливается после сбоя: демон могли выгрузить или переустановить.
-actor HelperRuleGroupGateway: RuleGroupGateway {
+actor HelperRuleGroupGateway: RuleGroupGateway, FailsafeSyncing {
     private var connection: NSXPCConnection?
     private let logger = Logger(subsystem: "dev.sunnyday.lsvpncompanion", category: "helper-xpc")
 
@@ -40,6 +40,22 @@ actor HelperRuleGroupGateway: RuleGroupGateway {
                 } else {
                     complete(.failure(RuleGroupGatewayError
                         .fromCLI(error ?? "неизвестная ошибка")))
+                }
+            }
+        }
+    }
+
+    /// Failsafe-конфиг уезжает в helper как JSON (D5): контракт остаётся
+    /// перечислимым, а расширение конфига не меняет сигнатуру операции.
+    func syncFailsafe(_ config: FailsafeConfig) async throws {
+        let data = try JSONEncoder().encode(config)
+        try await withProxy { proxy, complete in
+            proxy.setFailsafe(data) { success, error in
+                if success {
+                    complete(.success(()))
+                } else {
+                    complete(.failure(RuleGroupGatewayError
+                        .failsafeRejected(error ?? "неизвестная ошибка")))
                 }
             }
         }

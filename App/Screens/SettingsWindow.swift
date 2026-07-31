@@ -64,6 +64,31 @@ private struct GeneralSettingsTab: View {
                 }
             }
 
+            SettingsCard(caption: "Режим защиты") {
+                SettingsRow(isFirst: true) {
+                    VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                        DSSegmentedControl(
+                            titles: ["Блокировать при утечке", "Открывать только при VPN"],
+                            selection: modeSelection)
+                        Text(modeCaption)
+                            .font(DSFont.caption)
+                            .foregroundStyle(DSColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        // observeOnly побеждает строгий режим (D7): без этой
+                        // строки казалось бы, что трафик закрыт, хотя группы
+                        // не трогаются.
+                        if model.settings.observeOnly,
+                           model.settings.protectionMode == .strict {
+                            Text("режим наблюдения активен: группы не трогаются")
+                                .font(DSFont.caption)
+                                .foregroundStyle(DSColor.warn)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
             SettingsCard(caption: "Отказоустойчивость") {
                 SettingsRow(isFirst: true) {
                     DSSettingRow(title: "Выключать Wi-Fi при отказе helper",
@@ -127,6 +152,25 @@ private struct GeneralSettingsTab: View {
     private var helperSubtitle: String {
         let version = model.helperVersion.map { "v\($0) · " } ?? ""
         return version + model.diagnosis.title
+    }
+
+    /// Сегмент-контрол работает индексами, а настройка — enum: 0 — реактивный,
+    /// 1 — строгий (порядок сегментов в макете).
+    private var modeSelection: Binding<Int> {
+        Binding(get: { model.settings.protectionMode == .strict ? 1 : 0 },
+                set: { newValue in
+                    model.update { $0.protectionMode = newValue == 1 ? .strict : .reactive }
+                })
+    }
+
+    private var modeCaption: String {
+        switch model.settings.protectionMode {
+        case .reactive:
+            "группы Little Snitch включаются только при подтверждённой утечке"
+        case .strict:
+            "трафик открыт, только пока VPN подтверждён. Смена сети, пауза, "
+                + "выход и сбой приложения закрывают группы до новой проверки"
+        }
     }
 
     private func binding(_ keyPath: WritableKeyPath<AppSettings, Bool>) -> Binding<Bool> {
@@ -320,6 +364,16 @@ private struct RuleGroupsTab: View {
                 }
             }
             .background(DSColor.bgCard, in: RoundedRectangle(cornerRadius: DSRadius.lg))
+
+            // Предупреждение о самозапирании (§15): в строгом режиме включённая
+            // группа с браузером не даст пройти captive portal и поднять VPN.
+            Text("""
+                Не включайте в группы браузер и VPN-клиент — ручной выход из \
+                закрытого трафика делается в самом Little Snitch.
+                """)
+                .font(DSFont.caption)
+                .foregroundStyle(DSColor.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: DSMetrics.Settings.tabBarGap) {
                 DSSecondaryButton("Обновить список из LS") {
