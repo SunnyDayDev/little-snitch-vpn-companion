@@ -319,6 +319,12 @@ Snitch: тот же синий градиентный квадрат и бела
 - Little Snitch — не песочница: rule groups фильтруют новые соединения, но уже
   установленные могут дожить до своего таймаута.
 
+## Контрибуция
+
+Правила — в [CONTRIBUTING.md](CONTRIBUTING.md). Главное: `main` принимает только PR
+с зелёным CI, а любое изменение логики идёт через Spec-Driven Development
+(OpenSpec) и обновляет спеки в `openspec/specs/`.
+
 ## Лицензия
 
 [MIT](LICENSE). Little Snitch — продукт [Objective Development](https://www.obdev.at/);
