@@ -11,6 +11,8 @@
 		<key>dev.sunnyday.lsvpncompanion.helper</key>
 		<true/>
 	</dict>
+	<key>RunAtLoad</key>
+	<true/>
 	<key>AssociatedBundleIdentifiers</key>
 	<array>
 		<string>dev.sunnyday.lsvpncompanion</string>

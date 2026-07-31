@@ -8,6 +8,7 @@ struct DSStatusIcon: View {
         case protected
         case leak
         case offline
+        case checking
         case paused
 
         var symbolName: String {
@@ -15,6 +16,9 @@ struct DSStatusIcon: View {
             case .protected: DSSymbol.resolve("checkmark.shield")
             case .leak: DSSymbol.resolve("exclamationmark.shield")
             case .offline: DSSymbol.resolve("shield.slash")
+            // Щита «с проверкой» (многоточием) в SF нет — берём нейтральный
+            // щит; от Protected состояние отличает warn-цвет.
+            case .checking: DSSymbol.resolve("shield")
             // §7.5 предлагает `minus.shield`, но такого символа в системе нет —
             // ТЗ разрешает ближайшую замену, берём щит из того же семейства.
             case .paused: DSSymbol.resolve("shield.lefthalf.filled")
@@ -25,7 +29,11 @@ struct DSStatusIcon: View {
             switch self {
             case .protected: DSColor.ok
             case .leak: DSColor.danger
+            // Offline — muted (реактивная семантика): warn-акцент «Offline
+            // в строгом режиме» задают места использования — атом дизайн-системы
+            // про режим защиты не знает.
             case .offline: DSColor.muted
+            case .checking: DSColor.warn
             case .paused: DSColor.warn
             }
         }
@@ -37,6 +45,7 @@ struct DSStatusIcon: View {
             case .protected: .protected
             case .leak: .leak
             case .offline: .offline
+            case .checking: .checking
             case .paused: .paused
             }
         }
@@ -78,6 +87,7 @@ enum DSSymbol {
         DSStatusIcon(state: .protected)
         DSStatusIcon(state: .leak)
         DSStatusIcon(state: .offline)
+        DSStatusIcon(state: .checking)
         DSStatusIcon(state: .paused)
     }
     .padding(DSSpacing.lg)
@@ -89,6 +99,7 @@ enum DSSymbol {
         DSStatusIcon(state: .protected)
         DSStatusIcon(state: .leak)
         DSStatusIcon(state: .offline)
+        DSStatusIcon(state: .checking)
         DSStatusIcon(state: .paused)
     }
     .padding(DSSpacing.lg)

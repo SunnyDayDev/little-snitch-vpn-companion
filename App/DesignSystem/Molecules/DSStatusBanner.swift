@@ -1,16 +1,18 @@
 import SwiftUI
 
-/// Баннер состояния (§8.5): подложка `ok-bg`/`danger-bg` + титул 12/semibold цветной
-/// + текст 12 secondary.
+/// Баннер состояния (§8.5): подложка `ok-bg`/`warn-bg`/`danger-bg` + титул
+/// 12/semibold цветной + текст 12 secondary.
 @MainActor
 struct DSStatusBanner: View {
     enum Style {
         case ok
+        case warn
         case danger
 
         var background: Color {
             switch self {
             case .ok: DSColor.okBg
+            case .warn: DSColor.warnBg
             case .danger: DSColor.dangerBg
             }
         }
@@ -18,6 +20,7 @@ struct DSStatusBanner: View {
         var titleColor: Color {
             switch self {
             case .ok: DSColor.ok
+            case .warn: DSColor.warn
             case .danger: DSColor.danger
             }
         }
@@ -56,6 +59,11 @@ struct DSStatusBanner: View {
             message: "Foreign-трафик уходит через VPN. Группы Little Snitch выключены."
         )
         DSStatusBanner(
+            style: .warn,
+            title: "Закрыто — ждём подтверждения VPN",
+            message: "Строгий режим: группы включены, пока проба не подтвердит цепочку."
+        )
+        DSStatusBanner(
             style: .danger,
             title: "Заблокированы: Claude, JetBrains, Android Studio",
             message: "Группа «VPN down» включена. Снимется автоматически, когда egress вернётся в цепочку."
@@ -72,6 +80,11 @@ struct DSStatusBanner: View {
             style: .ok,
             title: "Цепочка работает",
             message: "Foreign-трафик уходит через VPN. Группы Little Snitch выключены."
+        )
+        DSStatusBanner(
+            style: .warn,
+            title: "Закрыто — ждём подтверждения VPN",
+            message: "Строгий режим: группы включены, пока проба не подтвердит цепочку."
         )
         DSStatusBanner(
             style: .danger,

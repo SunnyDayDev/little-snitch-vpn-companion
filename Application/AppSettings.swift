@@ -5,6 +5,9 @@ struct AppSettings: Hashable, Sendable, Codable {
     var monitoringEnabled = true
     var observeOnly = false
     var escalationEnabled = true
+    /// Режим защиты (ФТ-2). Дефолт — реактивный: обновление не должно молча
+    /// отрезать сеть существующим пользователям.
+    var protectionMode = ProtectionMode.reactive
     var notifyTransitions = true
     var notifyErrors = true
 

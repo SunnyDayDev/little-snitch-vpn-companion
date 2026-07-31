@@ -188,6 +188,7 @@ private struct JournalRow: View {
             case .leak: DSColor.danger
             case .protected: DSColor.ok
             case .offline: DSColor.muted
+            case .checking: DSColor.warn
             case .paused: DSColor.warn
             }
         case .error: DSColor.danger

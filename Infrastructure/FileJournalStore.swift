@@ -144,6 +144,7 @@ enum JournalFormatting {
         case .protected: "Защищено"
         case .leak: "Утечка"
         case .offline: "Офлайн"
+        case .checking: "Проверка"
         case .paused: "Пауза"
         }
     }

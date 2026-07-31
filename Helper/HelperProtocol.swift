@@ -1,6 +1,6 @@
 import Foundation
 
-/// Узкий XPC-контракт helper-демона (§10.2 SPEC.md): ровно три операции,
+/// Узкий XPC-контракт helper-демона (§10.2 SPEC.md): ровно четыре операции,
 /// произвольные команды не проходят по построению. Файл компилируется
 /// и в приложение, и в helper.
 @objc protocol HelperProtocol {
@@ -9,6 +9,10 @@ import Foundation
     func listRuleGroups(reply: @escaping @Sendable (Data?, String?) -> Void)
     func setRuleGroup(_ name: String, enabled: Bool,
                       reply: @escaping @Sendable (Bool, String?) -> Void)
+    /// JSON-представление `FailsafeConfig`: Data вместо словаря, чтобы
+    /// расширение конфига не меняло сигнатуру контракта.
+    func setFailsafe(_ config: Data,
+                     reply: @escaping @Sendable (Bool, String?) -> Void)
 }
 
 enum HelperConstants {

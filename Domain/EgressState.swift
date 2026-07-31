@@ -4,7 +4,18 @@ enum EgressState: String, Codable, Hashable, CaseIterable {
     case protected
     case leak
     case offline
+    /// «Сеть есть, вердикта ещё нет». Возникает только в строгом режиме:
+    /// в реактивном состояние до вердикта сохраняется прежним.
+    case checking
     case paused
+}
+
+/// Режим защиты (ФТ-2): каким ситуациям разрешено держать трафик открытым.
+enum ProtectionMode: String, Codable, Hashable, CaseIterable {
+    /// Закрываем при доказанной утечке; неопределённость групп не трогает.
+    case reactive
+    /// Открыто только при доказанном VPN: любая неопределённость закрывает.
+    case strict
 }
 
 /// Момент времени без Foundation: Domain остаётся чистым Swift, а реальные

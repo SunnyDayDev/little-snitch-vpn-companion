@@ -26,8 +26,7 @@ struct MenuBarPopover: View {
                 DSInfoRow(label: "Проверка", value: presentation.lastCheck)
                 DSInfoRow(label: "Группы LS",
                           value: presentation.groupsValue,
-                          valueColor: model.snapshot.state == .leak
-                              ? DSColor.danger : DSColor.textPrimary)
+                          valueColor: presentation.groupsValueColor)
                 DSInfoRow(label: "Сеть", value: presentation.network)
                 if !model.diagnosis.isReady {
                     DSInfoRow(label: diagnosisLabel,
@@ -99,11 +98,20 @@ struct StatusPresentation {
     let snapshot: MonitoringSnapshot
     let settings: AppSettings
 
+    /// Режимо-зависимые тексты ниже читают режим прямо из настроек — как и
+    /// прочие подписи (observeOnly, leakGroups).
+    private var isStrict: Bool { settings.protectionMode == .strict }
+
+    /// Строгий режим реально закрывает группы. Под observeOnly утверждать
+    /// «трафик закрыт» нельзя — группы не тронуты (ФТ-10 побеждает).
+    private var isEnforcingStrict: Bool { isStrict && !settings.observeOnly }
+
     var title: String {
         switch snapshot.state {
         case .protected: "Защищено"
         case .leak: "Утечка"
         case .offline: "Офлайн"
+        case .checking: "Проверка"
         case .paused: "Пауза"
         }
     }
@@ -119,9 +127,15 @@ struct StatusPresentation {
             guard let trace = snapshot.trace else { return "трафик идёт напрямую" }
             return "egress \(trace.ip.text) — трафик идёт напрямую"
         case .offline:
-            return "маяк недоступен — состояние групп не меняется"
+            return isEnforcingStrict
+                ? "сети нет — трафик закрыт"
+                : "маяк недоступен — состояние групп не меняется"
+        case .checking:
+            return "сеть сменилась — ждём подтверждения VPN"
         case .paused:
-            return "мониторинг остановлен вручную"
+            return isEnforcingStrict
+                ? "мониторинг на паузе — трафик закрыт"
+                : "мониторинг остановлен вручную"
         }
     }
 
@@ -135,7 +149,26 @@ struct StatusPresentation {
             Banner(style: .danger,
                    title: blockedTitle,
                    message: leakMessage)
-        case .offline, .paused:
+        // Checking возникает только в строгом режиме; проверка на
+        // `isEnforcingStrict` — на случай отставшего снапшота при
+        // переключении strict→reactive и ради честности под observeOnly.
+        case .checking where isEnforcingStrict:
+            Banner(style: .warn,
+                   title: "Закрыто — ждём подтверждения VPN",
+                   message: "Строгий режим: группы включены, пока проба не подтвердит цепочку.")
+        case .offline where isEnforcingStrict:
+            Banner(style: .warn,
+                   title: "Закрыто: сети нет",
+                   message: "Строгий режим: группы остаются включены. "
+                       + "Откроется после возвращения сети и подтверждения VPN.")
+        case .paused where isEnforcingStrict:
+            Banner(style: .warn,
+                   title: "Пауза: трафик закрыт",
+                   message: "Строгий режим: группы остаются включены, "
+                       + "пока мониторинг не возобновится и VPN не подтвердится.")
+        // В реактивном режиме Offline и Paused групп не трогают — баннер
+        // не нужен, контекст даёт подзаголовок.
+        case .offline, .paused, .checking:
             nil
         }
     }
@@ -169,6 +202,14 @@ struct StatusPresentation {
         return snapshot.activeLeakGroups.count == 1
             ? "включена «\(snapshot.activeLeakGroups[0])»"
             : "включены: \(snapshot.activeLeakGroups.joined(separator: ", "))"
+    }
+
+    /// Danger — только при утечке. Группы, включённые без утечки (Checking,
+    /// Offline/Paused в строгом режиме), — warn: закрыто намеренно, не авария.
+    var groupsValueColor: Color {
+        if snapshot.state == .leak { return DSColor.danger }
+        if !snapshot.activeLeakGroups.isEmpty { return DSColor.warn }
+        return DSColor.textPrimary
     }
 
     var lastCheck: String {

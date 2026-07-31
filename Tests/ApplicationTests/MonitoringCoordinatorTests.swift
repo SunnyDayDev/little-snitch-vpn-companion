@@ -391,3 +391,400 @@ private actor SnapshotBox {
     private(set) var states: [EgressState] = []
     func record(_ state: EgressState) { states.append(state) }
 }
+
+/// Строгий режим: «группы выключены ⇔ последний вердикт Protected и мониторинг
+/// работает». Проверяются порядок закрытия, гонки и переключение режима.
+@Suite("MonitoringCoordinator — строгий режим")
+struct StrictCoordinatorTests {
+    private struct Harness {
+        let coordinator: MonitoringCoordinator
+        let beacon: FakeBeacon
+        let path: FakePathMonitor
+        let tripwire: FakeTripwire
+        let gateway: FakeRuleGroupGateway
+        let wifi: FakeWifi
+        let journal: FakeJournal
+        let notifications: FakeNotifications
+        let settings: SettingsHolder
+    }
+
+    private func makeHarness(settings: AppSettings = TestData.settings(mode: .strict),
+                             groups: [String: Bool] = ["VPN down": false],
+                             clock: any Clock = ImmediateClock()) -> Harness {
+        let holder = SettingsHolder(settings)
+        let beacon = FakeBeacon()
+        let tripwire = FakeTripwire()
+        let path = FakePathMonitor()
+        let gateway = FakeRuleGroupGateway(groups: groups)
+        let wifi = FakeWifi()
+        let journal = FakeJournal()
+        let notifications = FakeNotifications()
+
+        return Harness(
+            coordinator: MonitoringCoordinator(
+                settingsProvider: { holder.settings }, beacon: beacon,
+                directIP: FakeDirectIP(), tripwire: tripwire, path: path,
+                gateway: gateway, wifi: wifi, journal: journal,
+                notifications: notifications, clock: clock),
+            beacon: beacon, path: path, tripwire: tripwire, gateway: gateway,
+            wifi: wifi, journal: journal, notifications: notifications,
+            settings: holder)
+    }
+
+    // MARK: - Старт и вердикты
+
+    @Test("Старт: закрытие ДО первого вердикта, открытие только после Protected")
+    func startClosesBeforeFirstVerdict() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+
+        await harness.coordinator.start()
+
+        // Первая операция — закрытие (reconcile(.checking) до пробы),
+        // вторая — открытие по protected-вердикту.
+        #expect(await harness.gateway.operations
+            == [RuleGroupOperation(name: "VPN down", enable: true),
+                RuleGroupOperation(name: "VPN down", enable: false)])
+        #expect(await harness.coordinator.snapshot.state == .protected)
+        await harness.coordinator.stop()
+    }
+
+    @Test("Offline-вердикт закрывает группы")
+    func offlineVerdictCloses() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.offline(.timeout))
+
+        await harness.coordinator.runProbe(trigger: .scheduled)
+
+        #expect(await harness.coordinator.snapshot.state == .offline)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        #expect(await harness.coordinator.snapshot.activeLeakGroups == ["VPN down"])
+    }
+
+    @Test("Старт за captive portal: закрыто сразу и остаётся закрытым")
+    func captivePortalCloses() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body("<html>Войдите в сеть</html>"))
+
+        await harness.coordinator.start()
+
+        #expect(await harness.coordinator.snapshot.state == .offline)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        await harness.coordinator.stop()
+    }
+
+    // MARK: - События пути
+
+    @Test("Пропажа сети закрывает немедленно, без пробы")
+    func pathDownClosesWithoutProbe() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: false, interfaceDescription: "нет сети"))
+
+        #expect(await harness.coordinator.snapshot.state == .offline)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        // Проба не запускалась: закрытие не ждёт вердикта
+        #expect(await harness.beacon.callCount == 1)
+    }
+
+    @Test("Гонка: вердикт пробы, запущенной до пропажи сети, отбрасывается")
+    func staleVerdictAfterPathDownIsDropped() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+
+        // Проба уходит и подвисает в полёте
+        await harness.beacon.holdNextFetch()
+        let inFlight = Task { await harness.coordinator.runProbe(trigger: .scheduled) }
+        while await !harness.beacon.isHolding { await Task.yield() }
+
+        // Сеть пропала: закрылись
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: false, interfaceDescription: "нет сети"))
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        // Проба возвращается с protected — но её вердикт устарел
+        await harness.beacon.release()
+        await inFlight.value
+
+        #expect(await harness.coordinator.snapshot.state == .offline)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+    }
+
+    @Test("Гонка: вердикт пробы, запущенной до смены сети, отбрасывается")
+    func staleVerdictAfterPathShiftIsDropped() async {
+        let clock = ManualClock()
+        let harness = makeHarness(clock: clock)
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+
+        // Плановая проба висит в полёте в сети A; она вернёт protected,
+        // но решать должна только свежая проба сети B
+        await harness.beacon.holdNextFetch()
+        let inFlight = Task { await harness.coordinator.runProbe(trigger: .scheduled) }
+        while await !harness.beacon.isHolding { await Task.yield() }
+
+        // Переключились на сеть B: остаёмся открытыми (мягкая проверка),
+        // свежая проба уйдёт после debounce
+        async let change: Void = harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi B"))
+        await clock.waitForSleepers(1)
+
+        // Старая проба вернулась — вердикт устарел и отброшен: счётчик
+        // подтверждения и трейс не должны опираться на прошлую сеть
+        await harness.beacon.release()
+        await inFlight.value
+
+        // Свежая проба сети B говорит «утечка» — с первого раза только
+        // подтверждение, второй вердикт закрывает
+        await harness.beacon.setFallback(.body(TestData.leakBody))
+        await clock.advance(by: 1)
+        // Подтверждающая проба ждёт свои 2.5 с
+        await clock.waitForSleepers(1)
+        await clock.advance(by: 3)
+        _ = await change
+        #expect(await harness.coordinator.snapshot.state == .leak)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+    }
+
+    @Test("Смена сети из открытого состояния не закрывает превентивно")
+    func pathShiftFromProtectedStaysOpen() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+        await harness.gateway.resetOperations()
+
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi B"))
+
+        // Никакого вкл/выкл-чёрна: вердикт снова protected, группы не трогались
+        #expect(await harness.coordinator.snapshot.state == .protected)
+        #expect(await harness.gateway.operations.isEmpty)
+    }
+
+    @Test("Провал закрытия при паузе ретраится до успеха")
+    func pausedCloseFailureIsRetried() async {
+        let clock = ManualClock()
+        let harness = makeHarness(clock: clock)
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+
+        // Закрытие на паузе проваливается: helper недоступен
+        await harness.gateway.failSet(with: .cliFailed("сбой CLI"))
+        await harness.coordinator.pause()
+        #expect(await harness.coordinator.snapshot.state == .paused)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+        #expect(await harness.coordinator.snapshot.groupsStateKnown == false)
+
+        // Helper ожил — ретрай закрывает без участия пользователя
+        await harness.gateway.failSet(with: nil)
+        await clock.waitForSleepers(1)
+        await clock.advance(by: 20)
+        while await !(harness.coordinator.snapshot.groupsStateKnown) { await Task.yield() }
+        #expect(await harness.gateway.groups["VPN down"] == true)
+    }
+
+    @Test("Включение строгого режима без мониторинга закрывает и не пробует")
+    func switchToStrictWithoutMonitoringClosesWithoutProbe() async {
+        // Мониторинг выключен с запуска: start() не вызывался вовсе
+        let harness = makeHarness(settings: TestData.settings(mode: .reactive))
+        harness.settings.set(TestData.settings(mode: .strict))
+
+        await harness.coordinator.protectionModeChanged()
+
+        // Закрыто; одиночная проба без работающего детектора не запускалась —
+        // её protected-вердикт открыл бы группы без дальнейшего надзора
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        #expect(await harness.beacon.callCount == 0)
+    }
+
+    @Test("«Проверить сейчас» без работающего детектора — no-op")
+    func userProbeWithoutDetectorIsNoop() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.gateway.resetOperations()
+
+        await harness.coordinator.probeNowByUser()
+
+        #expect(await harness.beacon.callCount == 0)
+        #expect(await harness.gateway.operations.isEmpty)
+    }
+
+    @Test("Возврат сети после пропажи: закрыто до свежего Protected-вердикта")
+    func networkRecoveryStaysClosedUntilVerdict() async {
+        let clock = ManualClock()
+        let harness = makeHarness(clock: clock)
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+
+        // Сеть пропала: закрылись
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: false, interfaceDescription: "нет сети"))
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        // Сеть вернулась: до вердикта — Checking, группы остаются закрыты
+        async let change: Void = harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi"))
+        await clock.waitForSleepers(1)
+        #expect(await harness.coordinator.snapshot.state == .checking)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        await clock.advance(by: 1)
+        _ = await change
+
+        // Вердикт protected открыл
+        #expect(await harness.coordinator.snapshot.state == .protected)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+    }
+
+    // MARK: - Пауза, возобновление, завершение
+
+    @Test("Пауза закрывает группы до остановки детектора")
+    func pauseCloses() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        #expect(await harness.gateway.groups["VPN down"] == false)
+
+        await harness.coordinator.pause()
+
+        #expect(await harness.coordinator.snapshot.state == .paused)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        #expect(await harness.tripwire.isStarted == false)
+    }
+
+    @Test("Возобновление: закрыто до вердикта, открытие только по Protected")
+    func resumeStaysClosedUntilVerdict() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        await harness.coordinator.pause()
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        // После возобновления маяк молчит: остаёмся закрытыми
+        await harness.beacon.setFallback(.offline(.timeout))
+        await harness.coordinator.resume()
+        #expect(await harness.coordinator.snapshot.state == .offline)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        // Пришёл protected — открылись
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .user)
+        #expect(await harness.coordinator.snapshot.state == .protected)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+        await harness.coordinator.stop()
+    }
+
+    @Test("Завершение приложения закрывает группы")
+    func terminationCloses() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        #expect(await harness.gateway.groups["VPN down"] == false)
+
+        await harness.coordinator.prepareForTermination()
+
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        let actions = await harness.journal.events.compactMap { event -> String? in
+            if case .action(let text) = event.kind { return text } else { return nil }
+        }
+        #expect(actions.contains { $0.contains("завершение приложения") })
+    }
+
+    @Test("Завершение в реактивном режиме групп не трогает")
+    func reactiveTerminationIsQuiet() async {
+        let harness = makeHarness(settings: TestData.settings(mode: .reactive))
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        await harness.gateway.resetOperations()
+
+        await harness.coordinator.prepareForTermination()
+
+        #expect(await harness.gateway.operations.isEmpty)
+    }
+
+    // MARK: - Переключение режима на лету
+
+    @Test("Реактивный → строгий при Offline закрывает немедленно")
+    func switchToStrictCloses() async {
+        let harness = makeHarness(settings: TestData.settings(mode: .reactive))
+        await harness.beacon.setFallback(.offline(.timeout))
+        await harness.coordinator.start()
+        #expect(await harness.coordinator.snapshot.state == .offline)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+
+        harness.settings.set(TestData.settings(mode: .strict))
+        await harness.coordinator.protectionModeChanged()
+
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        await harness.coordinator.stop()
+    }
+
+    @Test("Строгий → реактивный из паузы открывает: некому было бы снять блок")
+    func switchToReactiveFromPauseOpens() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        await harness.coordinator.pause()
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        harness.settings.set(TestData.settings(mode: .reactive))
+        await harness.coordinator.protectionModeChanged()
+
+        #expect(await harness.gateway.groups["VPN down"] == false)
+        #expect(await harness.coordinator.snapshot.state == .paused)
+    }
+
+    @Test("Строгий → реактивный при Leak оставляет блок")
+    func switchToReactiveKeepsLeakBlock() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.leakBody))
+        await harness.coordinator.runProbe(trigger: .scheduled)
+        #expect(await harness.coordinator.snapshot.state == .leak)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        harness.settings.set(TestData.settings(mode: .reactive))
+        await harness.coordinator.protectionModeChanged()
+
+        #expect(await harness.gateway.groups["VPN down"] == true)
+    }
+
+    // MARK: - Отказоустойчивость
+
+    @Test("Отказ закрытия при Offline не эскалирует Wi-Fi")
+    func failedCloseWhileOfflineDoesNotEscalate() async {
+        let harness = makeHarness()
+        await harness.gateway.failList(with: .helperUnavailable("XPC недоступен"))
+        await harness.beacon.setFallback(.offline(.timeout))
+
+        await harness.coordinator.runProbe(trigger: .scheduled)
+
+        #expect(await harness.coordinator.snapshot.state == .offline)
+        #expect(await harness.coordinator.snapshot.helperUnavailable)
+        #expect(await harness.wifi.turnedOffCount == 0)
+        #expect(await harness.coordinator.snapshot.groupsStateKnown == false)
+    }
+
+    @Test("observeOnly побеждает строгий режим: группы не тронуты")
+    func observeOnlyWinsOverStrict() async {
+        var settings = TestData.settings(mode: .strict)
+        settings.observeOnly = true
+        let harness = makeHarness(settings: settings)
+        await harness.beacon.setFallback(.offline(.timeout))
+
+        await harness.coordinator.runProbe(trigger: .scheduled)
+
+        #expect(await harness.coordinator.snapshot.state == .offline)
+        #expect(await harness.gateway.operations.isEmpty)
+        // ФТ-10: обкатка строгого режима видна в журнале
+        let actions = await harness.journal.events.compactMap { event -> String? in
+            if case .action(let text) = event.kind { return text } else { return nil }
+        }
+        #expect(actions.contains { $0.contains("закрыл бы группы") })
+    }
+}

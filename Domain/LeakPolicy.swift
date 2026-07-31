@@ -1,14 +1,21 @@
 /// Политика «состояние → целевой набор включённых групп» и вычисление плана
 /// reconcile. Никакой истории: план всегда считается от фактического состояния.
 enum LeakPolicy {
-    /// `nil` означает «состояние не определяет целевой набор» — при Offline
-    /// и Paused группы не трогаются вовсе.
+    /// `nil` означает «состояние не определяет целевой набор». В реактивном
+    /// режиме так ведут себя Offline, Checking и Paused; в строгом целевой
+    /// набор определён всегда: открыто — только доказанный Protected.
     static func targetEnabledGroups(for state: EgressState,
+                                    mode: ProtectionMode = .reactive,
                                     mapping: RuleGroupMapping) -> Set<String>? {
-        switch state {
-        case .leak: mapping.managedGroups
-        case .protected: []
-        case .offline, .paused: nil
+        switch mode {
+        case .reactive:
+            switch state {
+            case .leak: mapping.managedGroups
+            case .protected: []
+            case .offline, .checking, .paused: nil
+            }
+        case .strict:
+            state == .protected ? [] : mapping.managedGroups
         }
     }
 
@@ -39,9 +46,11 @@ enum LeakPolicy {
 
     /// План для состояния целиком. `nil` — состояние не требует вмешательства.
     static func plan(for state: EgressState,
+                     mode: ProtectionMode = .reactive,
                      mapping: RuleGroupMapping,
                      actual: [RuleGroup]) -> ReconcilePlan? {
-        guard let target = targetEnabledGroups(for: state, mapping: mapping) else {
+        guard let target = targetEnabledGroups(for: state, mode: mode,
+                                               mapping: mapping) else {
             return nil
         }
         return plan(actual: actual, target: target, managed: mapping.managedGroups)

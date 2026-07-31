@@ -97,4 +97,51 @@ struct ApplyPolicyTests {
         #expect(await gateway.groups["Моя группа"] == true)
         #expect(await gateway.operations.map(\.name) == ["VPN down"])
     }
+
+    // MARK: - Строгий режим
+
+    @Test("Строгий режим: Offline и Checking включают группы")
+    func strictClosesOnUncertainty() async {
+        for state in [EgressState.offline, .checking, .paused] {
+            let gateway = FakeRuleGroupGateway(groups: ["VPN down": false])
+            let outcome = await makePolicy(gateway)
+                .run(state: state, settings: TestData.settings(mode: .strict))
+            #expect(outcome == .applied(
+                operations: [RuleGroupOperation(name: "VPN down", enable: true)],
+                missingGroups: []))
+            #expect(await gateway.groups["VPN down"] == true)
+        }
+    }
+
+    @Test("Строгий режим: Protected открывает")
+    func strictProtectedOpens() async {
+        let gateway = FakeRuleGroupGateway(groups: ["VPN down": true])
+        _ = await makePolicy(gateway)
+            .run(state: .protected, settings: TestData.settings(mode: .strict))
+        #expect(await gateway.groups["VPN down"] == false)
+    }
+
+    @Test("Явная цель: переходный reconcile при смене режима")
+    func explicitTargetRun() async {
+        // strict → reactive из Offline: цель пустая — открыть
+        let gateway = FakeRuleGroupGateway(groups: ["VPN down": true])
+        let outcome = await makePolicy(gateway)
+            .run(target: [], settings: TestData.settings())
+        #expect(outcome == .applied(
+            operations: [RuleGroupOperation(name: "VPN down", enable: false)],
+            missingGroups: []))
+        #expect(await gateway.groups["VPN down"] == false)
+    }
+
+    @Test("Явная цель уважает observeOnly")
+    func explicitTargetRespectsObserveOnly() async {
+        let gateway = FakeRuleGroupGateway(groups: ["VPN down": false])
+        var settings = TestData.settings(mode: .strict)
+        settings.observeOnly = true
+        let outcome = await makePolicy(gateway)
+            .run(target: ["VPN down"], settings: settings)
+        #expect(outcome == .skippedObserveOnly(
+            operations: [RuleGroupOperation(name: "VPN down", enable: true)]))
+        #expect(await gateway.groups["VPN down"] == false)
+    }
 }

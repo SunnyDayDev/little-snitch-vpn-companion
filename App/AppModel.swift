@@ -62,12 +62,19 @@ final class AppModel {
     private let installer = HelperInstaller()
     private let notifications: UserNotificationsPresenter
     private let loginItem = LoginItemController()
+    /// Presence-соединение строгого режима (D5): его пропажу helper считает
+    /// сигналом dead-man's switch.
+    private let presence = HelperPresenceConnection()
     private var observerID: Int?
     private var didReinstallStaleHelper = false
+    private var didRecoverSilentHelper = false
     private var didRestoreHelper = false
     private var helperWatchdog: Task<Void, Never>?
     private var didJournalHelperStatus = false
     private var didPromptForApproval = false
+    /// Последний syncFailsafe не дошёл до helper — вотчдог обязан повторить,
+    /// иначе устаревший конфиг на диске сработает после выхода приложения.
+    private var failsafeSyncPending = false
 
     init(coordinator: MonitoringCoordinator,
          settingsStore: any SettingsStore,
@@ -96,9 +103,40 @@ final class AppModel {
         }
         await refreshHelperState()
         await refreshRuleGroups()
+        // После проверки версии helper: устаревшему демону без setFailsafe
+        // конфиг слать бессмысленно, а к этому моменту он уже переустановлен.
+        await syncFailsafe()
         await ensureNotificationAuthorization()
         await restoreLoginItemIfLost()
         startHelperWatchdog()
+    }
+
+    /// Синхронизация failsafe-страховки helper (D5): активна только когда
+    /// строгий режим включён и не перекрыт observeOnly. Presence-соединение
+    /// держится ровно при активной страховке. Ошибка не фатальна — первый
+    /// эшелон (закрытие при выходе) работает и без helper, — но обязана
+    /// ретраиться вотчдогом: устаревший strict-конфиг на диске helper иначе
+    /// запер бы реактивного пользователя после выхода из приложения.
+    private func syncFailsafe() async {
+        let strictActive = settings.protectionMode == .strict && !settings.observeOnly
+        await presence.setActive(strictActive)
+        do {
+            try await gateway.syncFailsafe(FailsafeConfig(
+                strictActive: strictActive,
+                groups: settings.leakGroups))
+            failsafeSyncPending = false
+        } catch {
+            // Предупреждаем один раз за эпизод: вотчдог ретраит каждые 20 с,
+            // и повторные строки замусорили бы журнал.
+            if !failsafeSyncPending {
+                let message = (error as? RuleGroupGatewayError)?.message
+                    ?? String(describing: error)
+                await journal.append(JournalEvent(
+                    time: await SystemClock().now(),
+                    kind: .warning("failsafe-конфиг не доставлен helper: \(message)")))
+            }
+            failsafeSyncPending = true
+        }
     }
 
     /// Login item ссылается на конкретный бандл. После переезда приложения
@@ -135,6 +173,7 @@ final class AppModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(20))
                 guard let self, !Task.isCancelled else { return }
+                if self.failsafeSyncPending { await self.syncFailsafe() }
                 guard !self.diagnosis.isReady || self.groupsError != nil else { continue }
                 await self.refreshHelperState()
                 await self.refreshRuleGroups()
@@ -156,6 +195,12 @@ final class AppModel {
         }
     }
 
+    /// Завершение приложения (⌘Q, logout, выключение): в строгом режиме
+    /// координатор закрывает группы перед смертью процесса.
+    func prepareForTermination() async {
+        await coordinator.prepareForTermination()
+    }
+
     // MARK: - Настройки
 
     func update(_ transform: (inout AppSettings) -> Void) {
@@ -167,8 +212,22 @@ final class AppModel {
 
         let monitoringToggled = previous.monitoringEnabled != settings.monitoringEnabled
         let mappingChanged = previous.leakGroups != settings.leakGroups
+        let modeChanged = previous.protectionMode != settings.protectionMode
+        let observeToggled = previous.observeOnly != settings.observeOnly
+        let failsafeChanged = modeChanged || mappingChanged || observeToggled
         Task {
             await coordinator.settingsChanged()
+            if failsafeChanged {
+                // Страховка helper узнаёт о новом режиме до переходного
+                // reconcile: иначе есть окно, где режим уже строгий, а
+                // dead-man's switch ещё не взведён.
+                await syncFailsafe()
+            }
+            if modeChanged {
+                // Переходный reconcile выполняет координатор: строгий закрывает
+                // всё, кроме Protected, реактивный открывает всё, кроме Leak.
+                await coordinator.protectionModeChanged()
+            }
             if monitoringToggled {
                 // Выключенный мониторинг — та же остановка детектора, что и
                 // пауза: иначе поповер продолжал бы показывать «Защищено».
@@ -177,7 +236,9 @@ final class AppModel {
                 } else {
                     await coordinator.pause()
                 }
-            } else if mappingChanged {
+            } else if mappingChanged || observeToggled, !modeChanged {
+                // Снятие observeOnly при строгом режиме обязано закрыть
+                // немедленно, а не ближайшей плановой пробой через минуту.
                 await coordinator.reconcileNow()
             }
         }
@@ -313,9 +374,14 @@ final class AppModel {
     }
 
     func reinstallHelper() async {
+        // Переустановка рвёт XPC-соединения: снимаем супервизию заранее, чтобы
+        // dead-man's switch не принял её за смерть приложения (D5).
+        try? await gateway.syncFailsafe(FailsafeConfig(strictActive: false, groups: []))
         await gateway.invalidate()
         do {
-            try await installer.reinstall()
+            // Явное действие пользователя — сразу полный цикл: мягкая
+            // перерегистрация не лечит выгруженный вручную job.
+            try await installer.reinstall(forceFullCycle: true)
         } catch {
             groupsError = "не удалось переустановить helper: \(error.localizedDescription)"
         }
@@ -323,15 +389,24 @@ final class AppModel {
         // launchd поднимает демон по требованию, и первый вызов сразу после
         // регистрации обычно не успевает: ждём, пока helper реально ответит,
         // вместо того чтобы показывать ошибку и просить нажать ещё раз.
-        await waitForHelperToAnswer()
+        if await !waitForHelperToAnswer() {
+            await recoverSilentHelperIfNeeded()
+        }
         await refreshRuleGroups()
+        await syncFailsafe()
     }
 
     /// Перерегистрация демона — единственный способ подсунуть launchd новый
     /// бинарь helper. Делается один раз за запуск: macOS может попросить
     /// одобрить объект входа заново, и дёргать пользователя чаще нельзя.
     private func updateHelperRegistration() async {
+        // Check-and-set до первого await: конкурентные вызовы (start и
+        // вотчдог) иначе оба проходят внешние guard'ы и чинят регистрацию
+        // дважды, сбрасывая одобрение, которое пользователь только что дал.
+        guard !didReinstallStaleHelper else { return }
         didReinstallStaleHelper = true
+        // См. reinstallHelper(): супервизию снимаем до разрыва соединений.
+        try? await gateway.syncFailsafe(FailsafeConfig(strictActive: false, groups: []))
         await gateway.invalidate()
         do {
             try await installer.reinstall()
@@ -339,8 +414,11 @@ final class AppModel {
             groupsError = "не удалось обновить helper: \(error.localizedDescription)"
         }
         await refreshHelperState()
-        await waitForHelperToAnswer()
+        if await !waitForHelperToAnswer() {
+            await recoverSilentHelperIfNeeded()
+        }
         helperVersion = try? await gateway.helperVersion()
+        await syncFailsafe()
 
         // Если macOS ждёт одобрения — открываем нужный раздел настроек сразу:
         // сам пользователь про этот шаг не догадается.
@@ -356,17 +434,44 @@ final class AppModel {
     /// Опрашивает helper, пока он не ответит (или не кончится терпение).
     /// Нужен и после переустановки, и после одобрения в Системных настройках:
     /// одобрение приложение никак иначе не заметит.
-    private func waitForHelperToAnswer(attempts: Int = 5) async {
+    @discardableResult
+    private func waitForHelperToAnswer(attempts: Int = 5) async -> Bool {
         for attempt in 1...attempts {
             if (try? await gateway.helperVersion()) != nil {
                 gatewayError = nil
                 groupsError = nil
-                return
+                return true
             }
-            guard attempt < attempts else { return }
+            guard attempt < attempts else { return false }
             try? await Task.sleep(for: .seconds(2))
             await gateway.invalidate()
         }
+        return false
+    }
+
+    /// Мягкая перерегистрация может «пройти» вхолостую: если job выгружали
+    /// вручную (launchctl bootout), база SMAppService всё ещё считает демон
+    /// зарегистрированным, `register()` возвращает успех, а слушателя в launchd
+    /// нет. Замечаем это по молчанию демона и делаем полный цикл
+    /// unregister → register.
+    private func recoverSilentHelperIfNeeded() async {
+        // Один раз за запуск и только когда демон числится включённым:
+        // повторные полные циклы сбрасывали бы одобрение быстрее, чем
+        // пользователь успевает его дать («ждёт одобрения» → тумблер →
+        // снова «ждёт одобрения»).
+        guard helperStatus.isReady, !didRecoverSilentHelper else { return }
+        didRecoverSilentHelper = true
+        await journal.append(JournalEvent(
+            time: await SystemClock().now(),
+            kind: .warning("helper зарегистрирован, но не отвечает — полная переустановка")))
+        do {
+            try await installer.reinstall(forceFullCycle: true)
+        } catch {
+            groupsError = "не удалось переустановить helper: \(error.localizedDescription)"
+            return
+        }
+        await refreshHelperState()
+        await waitForHelperToAnswer()
     }
 
     // MARK: - Журнал
