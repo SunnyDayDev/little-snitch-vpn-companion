@@ -5,7 +5,7 @@
       "type": "frame",
       "id": "LxPUc",
       "x": 0,
-      "y": -1160,
+      "y": 0,
       "name": "DS / Токены",
       "width": 700,
       "fill": "$bg-popover",
@@ -1028,6 +1028,67 @@
                       ]
                     }
                   ]
+                },
+                {
+                  "type": "frame",
+                  "id": "rHLvS",
+                  "name": "Токен warn-bg",
+                  "width": "fill_container",
+                  "gap": 8,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 6,
+                      "id": "yE8oO",
+                      "name": "Свотч light",
+                      "fill": "#FF950014",
+                      "width": 26,
+                      "height": 26,
+                      "stroke": "$separator",
+                      "strokeWidth": 1
+                    },
+                    {
+                      "type": "rectangle",
+                      "cornerRadius": 6,
+                      "id": "nEr8r",
+                      "name": "Свотч dark",
+                      "fill": "#FF9F0A20",
+                      "width": 26,
+                      "height": 26,
+                      "stroke": "$separator",
+                      "strokeWidth": 1
+                    },
+                    {
+                      "type": "frame",
+                      "id": "VrROa",
+                      "name": "Тексты",
+                      "layout": "vertical",
+                      "gap": 1,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "CjPUH",
+                          "name": "Имя",
+                          "fill": "$text-primary",
+                          "content": "warn-bg",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ScMXZ",
+                          "name": "Хексы",
+                          "fill": "$text-tertiary",
+                          "content": "#FF950014 / #FF9F0A20",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             }
@@ -1849,7 +1910,7 @@
       "type": "frame",
       "id": "riBrb",
       "x": 760,
-      "y": -1160,
+      "y": 0,
       "name": "DS / Атомы",
       "width": 700,
       "fill": "$bg-popover",
@@ -2233,9 +2294,9 @@
         {
           "type": "text",
           "id": "dbjhU",
-          "name": "Капшн СТАТУС-ИКОНКА · Защищено / Утечка / Офлайн / Пауза",
+          "name": "Капшн СТАТУС-ИКОНКА · Защищено / Утечка / Офлайн / Проверка / Пауза",
           "fill": "$text-tertiary",
-          "content": "СТАТУС-ИКОНКА · Защищено / Утечка / Офлайн / Пауза",
+          "content": "СТАТУС-ИКОНКА · Защищено / Утечка / Офлайн / Проверка / Пауза",
           "fontFamily": "$font",
           "fontSize": 11,
           "fontWeight": "600"
@@ -2273,6 +2334,14 @@
               "name": "Офлайн",
               "icon": "shield-off",
               "fill": "$muted"
+            },
+            {
+              "id": "K5LsQp",
+              "type": "ref",
+              "ref": "Z7vsKP",
+              "name": "Проверка",
+              "icon": "shield",
+              "fill": "$warn"
             },
             {
               "id": "rfTG4",
@@ -2506,7 +2575,7 @@
       "type": "frame",
       "id": "YVGpq",
       "x": 1520,
-      "y": -1160,
+      "y": 0,
       "name": "DS / Молекулы",
       "width": 740,
       "fill": "$bg-popover",
@@ -2793,9 +2862,9 @@
         {
           "type": "text",
           "id": "creyd",
-          "name": "Капшн БАННЕР СОСТОЯНИЯ · ok / danger",
+          "name": "Капшн БАННЕР СОСТОЯНИЯ · ok / warn / danger",
           "fill": "$text-tertiary",
-          "content": "БАННЕР СОСТОЯНИЯ · ok / danger",
+          "content": "БАННЕР СОСТОЯНИЯ · ok / warn / danger",
           "fontFamily": "$font",
           "fontSize": 11,
           "fontWeight": "600"
@@ -2838,6 +2907,22 @@
               "fontWeight": "normal"
             }
           ]
+        },
+        {
+          "id": "x6xkil",
+          "type": "ref",
+          "ref": "kkyKv",
+          "name": "Баннер warn",
+          "fill": "$warn-bg",
+          "descendants": {
+            "U1tDzS": {
+              "fill": "$warn",
+              "content": "Закрыто — ждём подтверждения VPN"
+            },
+            "vf8Ey": {
+              "content": "Строгий режим: группы включены, пока проба не подтвердит цепочку."
+            }
+          }
         },
         {
           "id": "prtA2",
@@ -3170,8 +3255,8 @@
     {
       "type": "frame",
       "id": "UTWvm",
-      "x": 2320,
-      "y": -1160,
+      "x": 760,
+      "y": 1300,
       "name": "DS / Атомы (dark)",
       "theme": {
         "mode": "dark"
@@ -3351,9 +3436,9 @@
         {
           "type": "text",
           "id": "m89By",
-          "name": "Капшн СТАТУС-ИКОНКА · Защищено / Утечка / Офлайн / Пауза",
+          "name": "Капшн СТАТУС-ИКОНКА · Защищено / Утечка / Офлайн / Проверка / Пауза",
           "fill": "$text-tertiary",
-          "content": "СТАТУС-ИКОНКА · Защищено / Утечка / Офлайн / Пауза",
+          "content": "СТАТУС-ИКОНКА · Защищено / Утечка / Офлайн / Проверка / Пауза",
           "fontFamily": "$font",
           "fontSize": 11,
           "fontWeight": "600"
@@ -3385,6 +3470,14 @@
               "name": "Офлайн",
               "icon": "shield-off",
               "fill": "$muted"
+            },
+            {
+              "id": "i971U",
+              "type": "ref",
+              "ref": "Z7vsKP",
+              "name": "Проверка",
+              "icon": "shield",
+              "fill": "$warn"
             },
             {
               "id": "pXe2o",
@@ -3455,8 +3548,8 @@
     {
       "type": "frame",
       "id": "GQTNx",
-      "x": 3080,
-      "y": -1160,
+      "x": 1520,
+      "y": 1300,
       "name": "DS / Молекулы (dark)",
       "theme": {
         "mode": "dark"
@@ -3560,9 +3653,9 @@
         {
           "type": "text",
           "id": "yG3Ke",
-          "name": "Капшн БАННЕР СОСТОЯНИЯ · ok / danger",
+          "name": "Капшн БАННЕР СОСТОЯНИЯ · ok / warn / danger",
           "fill": "$text-tertiary",
-          "content": "БАННЕР СОСТОЯНИЯ · ok / danger",
+          "content": "БАННЕР СОСТОЯНИЯ · ok / warn / danger",
           "fontFamily": "$font",
           "fontSize": 11,
           "fontWeight": "600"
@@ -3571,6 +3664,22 @@
           "id": "J5gaH",
           "type": "ref",
           "ref": "kkyKv"
+        },
+        {
+          "id": "V7Mq5p",
+          "type": "ref",
+          "ref": "kkyKv",
+          "name": "Баннер warn",
+          "fill": "$warn-bg",
+          "descendants": {
+            "U1tDzS": {
+              "fill": "$warn",
+              "content": "Закрыто — ждём подтверждения VPN"
+            },
+            "vf8Ey": {
+              "content": "Строгий режим: группы включены, пока проба не подтвердит цепочку."
+            }
+          }
         },
         {
           "id": "vlxcK",
@@ -3658,7 +3767,7 @@
     {
       "type": "frame",
       "id": "gpgQP",
-      "x": 0,
+      "x": 2500,
       "y": 0,
       "name": "Поповер — Защищено (light)",
       "clip": true,
@@ -3908,7 +4017,7 @@
     {
       "type": "frame",
       "id": "z00Qgb",
-      "x": 420,
+      "x": 2900,
       "y": 0,
       "name": "Поповер — Утечка (light)",
       "clip": true,
@@ -4180,7 +4289,7 @@
     {
       "type": "frame",
       "id": "hLTN9",
-      "x": 880,
+      "x": 5440,
       "y": 0,
       "name": "Настройки — Группы (light)",
       "clip": true,
@@ -4419,6 +4528,19 @@
               ]
             },
             {
+              "type": "text",
+              "id": "U6KKl",
+              "name": "Предупреждение о самозапирании",
+              "fill": "$text-tertiary",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Не включайте в группы браузер и VPN-клиент — ручной выход из закрытого трафика делается в самом Little Snitch.",
+              "lineHeight": 1.35,
+              "fontFamily": "$font",
+              "fontSize": 11,
+              "fontWeight": "normal"
+            },
+            {
               "type": "frame",
               "id": "v2Zop",
               "name": "Футер",
@@ -4492,7 +4614,7 @@
     {
       "type": "frame",
       "id": "P40vls",
-      "x": 2600,
+      "x": 3880,
       "y": 0,
       "name": "Настройки — Общие (light)",
       "clip": true,
@@ -4698,6 +4820,97 @@
             },
             {
               "type": "frame",
+              "id": "g0yBEd",
+              "name": "Отступ",
+              "width": 1,
+              "height": 6
+            },
+            {
+              "type": "text",
+              "id": "qTY74",
+              "name": "Секция РЕЖИМ ЗАЩИТЫ",
+              "fill": "$text-tertiary",
+              "content": "РЕЖИМ ЗАЩИТЫ",
+              "fontFamily": "$font",
+              "fontSize": 11,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "w8DsE",
+              "name": "Карточка",
+              "clip": true,
+              "width": "fill_container",
+              "fill": "$bg-card",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$separator",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "c3329",
+                  "name": "Ряд Режим защиты",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": "$space-sm",
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "f6Ny8",
+                      "name": "Сегмент-контрол",
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-md",
+                      "gap": 2,
+                      "padding": 2,
+                      "children": [
+                        {
+                          "id": "dJGws",
+                          "type": "ref",
+                          "ref": "rTg7e",
+                          "name": "Сегмент Блокировать при утечке",
+                          "descendants": {
+                            "fZ6zs": {
+                              "content": "Блокировать при утечке"
+                            }
+                          }
+                        },
+                        {
+                          "id": "GNQNL",
+                          "type": "ref",
+                          "ref": "vOzjn",
+                          "name": "Сегмент Открывать только при VPN",
+                          "descendants": {
+                            "a03tGG": {
+                              "content": "Открывать только при VPN"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "WBn6B",
+                      "name": "Подпись режима",
+                      "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "трафик открыт, только пока VPN подтверждён. Смена сети, пауза, выход и сбой приложения закрывают группы до новой проверки",
+                      "lineHeight": 1.35,
+                      "fontFamily": "$font",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "T4Rw06",
               "name": "Отступ",
               "width": 1,
@@ -4854,7 +5067,7 @@
     {
       "type": "frame",
       "id": "B3iooP",
-      "x": 3440,
+      "x": 4660,
       "y": 0,
       "name": "Настройки — Детектор (light)",
       "clip": true,
@@ -5460,7 +5673,7 @@
     {
       "type": "frame",
       "id": "d8GvkO",
-      "x": 1720,
+      "x": 6400,
       "y": 0,
       "name": "Журнал (light)",
       "clip": true,
@@ -5897,6 +6110,127 @@
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "немедленная проба",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "YP3C7",
+                  "type": "ref",
+                  "ref": "U65lf",
+                  "name": "Разделитель",
+                  "width": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "nSTli",
+                  "name": "Ряд 14:31:58 · Проверка",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "padding": [
+                    9,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "p9RqpD",
+                      "name": "Ячейка",
+                      "width": 76,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "E0zNci",
+                          "name": "Текст",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "14:31:58",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "x7WgM",
+                      "name": "Ячейка",
+                      "width": 96,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ZWOzb",
+                          "name": "Текст",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "путь",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "F3V8oo",
+                      "name": "Ячейка",
+                      "width": 150,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "n3mWNp",
+                          "name": "Текст",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "—",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "NmMBi",
+                      "name": "Ячейка",
+                      "width": "fill_container",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "pShQh",
+                          "name": "Текст",
+                          "fill": "$warn",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Protected → Checking",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fi0p2",
+                      "name": "Ячейка",
+                      "width": 210,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "pR3Th",
+                          "name": "Текст",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "включена «VPN down»",
                           "fontFamily": "$font",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -6432,8 +6766,8 @@
     {
       "type": "frame",
       "id": "p8k6b",
-      "x": 0,
-      "y": 499,
+      "x": 7400,
+      "y": 0,
       "name": "Онбординг (light)",
       "clip": true,
       "width": 560,
@@ -6580,7 +6914,7 @@
                       "content": "Создать rule group в Little Snitch"
                     },
                     "heCiL": {
-                      "content": "Группа «VPN down» с deny-правилами для Claude, JetBrains и Android Studio. Companion будет включать её при утечке и выключать при восстановлении."
+                      "content": "Группа «VPN down» с deny-правилами для Claude, JetBrains и Android Studio. Companion включает её, когда трафик закрыт, и выключает при подтверждённом VPN. Не включайте в группу браузер и VPN-клиент — иначе при закрытом трафике будет нечем пройти captive portal и поднять VPN."
                     },
                     "w4P67h": {
                       "id": "Yp2ne",
@@ -6658,8 +6992,8 @@
     {
       "type": "frame",
       "id": "sTc4q",
-      "x": 0,
-      "y": 1214,
+      "x": 8200,
+      "y": 0,
       "name": "Иконки строки меню",
       "fill": "$bg-popover",
       "cornerRadius": "$radius-xl",
@@ -6783,6 +7117,38 @@
             },
             {
               "type": "frame",
+              "id": "K0pNd",
+              "name": "Состояние Проверка",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "id": "tXEgy",
+                  "type": "ref",
+                  "ref": "gafhy",
+                  "name": "Чип",
+                  "descendants": {
+                    "DogQc": {
+                      "icon": "shield",
+                      "fill": "$warn"
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "y4asfD",
+                  "name": "Ярлык",
+                  "fill": "$text-secondary",
+                  "content": "Проверка",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "VM1T6",
               "name": "Состояние Пауза",
               "layout": "vertical",
@@ -6820,8 +7186,8 @@
     {
       "type": "frame",
       "id": "i6ogws",
-      "x": 0,
-      "y": 1600,
+      "x": 2500,
+      "y": 1300,
       "name": "Поповер — Защищено (dark)",
       "theme": {
         "mode": "dark"
@@ -7073,8 +7439,8 @@
     {
       "type": "frame",
       "id": "MtiqW",
-      "x": 420,
-      "y": 1600,
+      "x": 2900,
+      "y": 1300,
       "name": "Поповер — Утечка (dark)",
       "theme": {
         "mode": "dark"
@@ -7348,8 +7714,8 @@
     {
       "type": "frame",
       "id": "Uq7Lj",
-      "x": 880,
-      "y": 1600,
+      "x": 5440,
+      "y": 1300,
       "name": "Настройки — Группы (dark)",
       "theme": {
         "mode": "dark"
@@ -7590,6 +7956,19 @@
               ]
             },
             {
+              "type": "text",
+              "id": "cHlad",
+              "name": "Предупреждение о самозапирании",
+              "fill": "$text-tertiary",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "Не включайте в группы браузер и VPN-клиент — ручной выход из закрытого трафика делается в самом Little Snitch.",
+              "lineHeight": 1.35,
+              "fontFamily": "$font",
+              "fontSize": 11,
+              "fontWeight": "normal"
+            },
+            {
               "type": "frame",
               "id": "SvomO",
               "name": "Футер",
@@ -7663,8 +8042,8 @@
     {
       "type": "frame",
       "id": "OTFdq",
-      "x": 2600,
-      "y": 1600,
+      "x": 3880,
+      "y": 1300,
       "name": "Настройки — Общие (dark)",
       "theme": {
         "mode": "dark"
@@ -7872,6 +8251,97 @@
             },
             {
               "type": "frame",
+              "id": "TUSwS",
+              "name": "Отступ",
+              "width": 1,
+              "height": 6
+            },
+            {
+              "type": "text",
+              "id": "t96iw",
+              "name": "Секция РЕЖИМ ЗАЩИТЫ",
+              "fill": "$text-tertiary",
+              "content": "РЕЖИМ ЗАЩИТЫ",
+              "fontFamily": "$font",
+              "fontSize": 11,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "vkdDB",
+              "name": "Карточка",
+              "clip": true,
+              "width": "fill_container",
+              "fill": "$bg-card",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$separator",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Yny00",
+                  "name": "Ряд Режим защиты",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": "$space-sm",
+                  "padding": [
+                    10,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "qwxwA",
+                      "name": "Сегмент-контрол",
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-md",
+                      "gap": 2,
+                      "padding": 2,
+                      "children": [
+                        {
+                          "id": "FNRd2",
+                          "type": "ref",
+                          "ref": "rTg7e",
+                          "name": "Сегмент Блокировать при утечке",
+                          "descendants": {
+                            "fZ6zs": {
+                              "content": "Блокировать при утечке"
+                            }
+                          }
+                        },
+                        {
+                          "id": "Bbyl1",
+                          "type": "ref",
+                          "ref": "vOzjn",
+                          "name": "Сегмент Открывать только при VPN",
+                          "descendants": {
+                            "a03tGG": {
+                              "content": "Открывать только при VPN"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "B5JLcZ",
+                      "name": "Подпись режима",
+                      "fill": "$text-secondary",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "трафик открыт, только пока VPN подтверждён. Смена сети, пауза, выход и сбой приложения закрывают группы до новой проверки",
+                      "lineHeight": 1.35,
+                      "fontFamily": "$font",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "l87gp",
               "name": "Отступ",
               "width": 1,
@@ -8028,8 +8498,8 @@
     {
       "type": "frame",
       "id": "s3JAr",
-      "x": 3440,
-      "y": 1600,
+      "x": 4660,
+      "y": 1300,
       "name": "Настройки — Детектор (dark)",
       "theme": {
         "mode": "dark"
@@ -8637,8 +9107,8 @@
     {
       "type": "frame",
       "id": "hnPSc",
-      "x": 1720,
-      "y": 1600,
+      "x": 6400,
+      "y": 1300,
       "name": "Журнал (dark)",
       "theme": {
         "mode": "dark"
@@ -9077,6 +9547,127 @@
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
                           "content": "немедленная проба",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "n3QmX",
+                  "type": "ref",
+                  "ref": "U65lf",
+                  "name": "Разделитель",
+                  "width": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "v9CJvs",
+                  "name": "Ряд 14:31:58 · Проверка",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "padding": [
+                    9,
+                    14
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "o9fUrF",
+                      "name": "Ячейка",
+                      "width": 76,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "i9jGvU",
+                          "name": "Текст",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "14:31:58",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "q47DA",
+                      "name": "Ячейка",
+                      "width": 96,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "mBpRg",
+                          "name": "Текст",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "путь",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ID98G",
+                      "name": "Ячейка",
+                      "width": 150,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "eRuDZ",
+                          "name": "Текст",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "—",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "AkcYH",
+                      "name": "Ячейка",
+                      "width": "fill_container",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "D8dHz",
+                          "name": "Текст",
+                          "fill": "$warn",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Protected → Checking",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HwPlv",
+                      "name": "Ячейка",
+                      "width": 210,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "KZKb7",
+                          "name": "Текст",
+                          "fill": "$text-secondary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "включена «VPN down»",
                           "fontFamily": "$font",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -9612,8 +10203,8 @@
     {
       "type": "frame",
       "id": "ZyKoH",
-      "x": 0,
-      "y": 2099,
+      "x": 7400,
+      "y": 1300,
       "name": "Онбординг (dark)",
       "theme": {
         "mode": "dark"
@@ -9763,7 +10354,7 @@
                       "content": "Создать rule group в Little Snitch"
                     },
                     "heCiL": {
-                      "content": "Группа «VPN down» с deny-правилами для Claude, JetBrains и Android Studio. Companion будет включать её при утечке и выключать при восстановлении."
+                      "content": "Группа «VPN down» с deny-правилами для Claude, JetBrains и Android Studio. Companion включает её, когда трафик закрыт, и выключает при подтверждённом VPN. Не включайте в группу браузер и VPN-клиент — иначе при закрытом трафике будет нечем пройти captive portal и поднять VPN."
                     },
                     "w4P67h": {
                       "id": "sbAxa",
@@ -9841,8 +10432,8 @@
     {
       "type": "frame",
       "id": "WkNxF",
-      "x": 0,
-      "y": 2814,
+      "x": 8200,
+      "y": 1300,
       "name": "Иконки строки меню (dark)",
       "theme": {
         "mode": "dark"
@@ -9969,6 +10560,38 @@
             },
             {
               "type": "frame",
+              "id": "Gj3xw",
+              "name": "Состояние Проверка",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "id": "H4rfR6",
+                  "type": "ref",
+                  "ref": "gafhy",
+                  "name": "Чип",
+                  "descendants": {
+                    "DogQc": {
+                      "icon": "shield",
+                      "fill": "$warn"
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "Y67Mgw",
+                  "name": "Ярлык",
+                  "fill": "$text-secondary",
+                  "content": "Проверка",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "J6dGj0",
               "name": "Состояние Пауза",
               "layout": "vertical",
@@ -10006,8 +10629,8 @@
     {
       "type": "frame",
       "id": "dixlJ",
-      "x": 0,
-      "y": 3036,
+      "x": 8597,
+      "y": 0,
       "name": "Иконка приложения",
       "fill": "#ECECEE",
       "cornerRadius": 16,
@@ -10514,6 +11137,555 @@
           "fontWeight": "normal"
         }
       ]
+    },
+    {
+      "type": "frame",
+      "id": "TBEp6",
+      "x": 3300,
+      "y": 0,
+      "name": "Поповер — Проверка (light)",
+      "clip": true,
+      "width": 340,
+      "fill": "$bg-popover",
+      "cornerRadius": "$radius-2xl",
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#00000038",
+        "offset": {
+          "x": 0,
+          "y": 10
+        },
+        "blur": 30
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "wSAt0",
+          "type": "ref",
+          "ref": "XzvVU",
+          "name": "Шапка",
+          "width": "fill_container",
+          "descendants": {
+            "C5j6J": {
+              "icon": "shield",
+              "fill": "$warn"
+            },
+            "UdShy": {
+              "content": "Проверка"
+            },
+            "EmSmJ": {
+              "content": "сеть сменилась — ждём подтверждения VPN"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "Xi2km",
+          "name": "Баннер-обёртка",
+          "width": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            0,
+            12,
+            10,
+            12
+          ],
+          "children": [
+            {
+              "id": "Ozazh",
+              "type": "ref",
+              "ref": "kkyKv",
+              "fill": "$warn-bg",
+              "name": "Баннер",
+              "width": "fill_container",
+              "descendants": {
+                "U1tDzS": {
+                  "fill": "$warn",
+                  "content": "Закрыто — ждём подтверждения VPN"
+                },
+                "vf8Ey": {
+                  "content": "Строгий режим: группы включены, пока проба не подтвердит цепочку."
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "hmQ7M",
+          "name": "Инфо",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 7,
+          "padding": [
+            2,
+            16,
+            10,
+            16
+          ],
+          "children": [
+            {
+              "id": "J393p7",
+              "type": "ref",
+              "ref": "x4Vz4",
+              "name": "Строка Проверка",
+              "width": "fill_container",
+              "descendants": {
+                "Z256NC": {
+                  "content": "Проверка"
+                },
+                "E8McL": {
+                  "content": "только что · смена сети"
+                }
+              }
+            },
+            {
+              "id": "u2VWsI",
+              "type": "ref",
+              "ref": "x4Vz4",
+              "name": "Строка Группы LS",
+              "width": "fill_container",
+              "descendants": {
+                "Z256NC": {
+                  "content": "Группы LS"
+                },
+                "E8McL": {
+                  "content": "включена «VPN down»",
+                  "fill": "$warn"
+                }
+              }
+            },
+            {
+              "id": "c6M8T",
+              "type": "ref",
+              "ref": "x4Vz4",
+              "name": "Строка Сеть",
+              "width": "fill_container",
+              "descendants": {
+                "Z256NC": {
+                  "content": "Сеть"
+                },
+                "E8McL": {
+                  "content": "Wi-Fi · шлюз 10.0.0.1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "ibSNu",
+          "type": "ref",
+          "ref": "U65lf",
+          "name": "Разделитель",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "xrEfa",
+          "name": "Действия",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 1,
+          "padding": [
+            6,
+            8
+          ],
+          "children": [
+            {
+              "id": "SFwEC",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Проверить сейчас",
+              "width": "fill_container",
+              "fill": "$bg-hover",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "refresh-cw"
+                },
+                "h0kRhq": {
+                  "content": "Проверить сейчас"
+                },
+                "r6rQP": {
+                  "enabled": false
+                }
+              }
+            },
+            {
+              "id": "CBoyJ",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Пауза мониторинга",
+              "width": "fill_container",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "pause"
+                },
+                "h0kRhq": {
+                  "content": "Пауза мониторинга"
+                },
+                "r6rQP": {
+                  "enabled": false
+                }
+              }
+            },
+            {
+              "id": "gANr6",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Журнал…",
+              "width": "fill_container",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "scroll-text"
+                },
+                "h0kRhq": {
+                  "content": "Журнал…"
+                },
+                "r6rQP": {
+                  "enabled": false
+                }
+              }
+            },
+            {
+              "id": "rWI5V",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Настройки…",
+              "width": "fill_container",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "settings"
+                },
+                "h0kRhq": {
+                  "content": "Настройки…"
+                },
+                "r6rQP": {
+                  "enabled": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "he5x8",
+          "type": "ref",
+          "ref": "U65lf",
+          "name": "Разделитель",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "nY9Z7",
+          "name": "Футер",
+          "width": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            4,
+            8,
+            8,
+            8
+          ],
+          "children": [
+            {
+              "id": "MBEd3",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Завершить",
+              "width": "fill_container",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "power"
+                },
+                "h0kRhq": {
+                  "content": "Завершить"
+                },
+                "r6rQP": {
+                  "content": "⌘Q"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "tpbJy",
+      "x": 3300,
+      "y": 1300,
+      "name": "Поповер — Проверка (dark)",
+      "theme": {
+        "mode": "dark"
+      },
+      "clip": true,
+      "width": 340,
+      "fill": "$bg-popover",
+      "cornerRadius": "$radius-2xl",
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "effect": {
+        "type": "shadow",
+        "shadowType": "outer",
+        "color": "#00000038",
+        "offset": {
+          "x": 0,
+          "y": 10
+        },
+        "blur": 30
+      },
+      "layout": "vertical",
+      "children": [
+        {
+          "id": "uOtQb",
+          "type": "ref",
+          "ref": "XzvVU",
+          "name": "Шапка",
+          "width": "fill_container",
+          "descendants": {
+            "C5j6J": {
+              "icon": "shield",
+              "fill": "$warn"
+            },
+            "UdShy": {
+              "content": "Проверка"
+            },
+            "EmSmJ": {
+              "content": "сеть сменилась — ждём подтверждения VPN"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "MdRZV",
+          "name": "Баннер-обёртка",
+          "width": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            0,
+            12,
+            10,
+            12
+          ],
+          "children": [
+            {
+              "id": "d5dkr",
+              "type": "ref",
+              "ref": "kkyKv",
+              "fill": "$warn-bg",
+              "name": "Баннер",
+              "width": "fill_container",
+              "descendants": {
+                "U1tDzS": {
+                  "fill": "$warn",
+                  "content": "Закрыто — ждём подтверждения VPN"
+                },
+                "vf8Ey": {
+                  "content": "Строгий режим: группы включены, пока проба не подтвердит цепочку."
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "PTQyQ",
+          "name": "Инфо",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 7,
+          "padding": [
+            2,
+            16,
+            10,
+            16
+          ],
+          "children": [
+            {
+              "id": "i1v0L4",
+              "type": "ref",
+              "ref": "x4Vz4",
+              "name": "Строка Проверка",
+              "width": "fill_container",
+              "descendants": {
+                "Z256NC": {
+                  "content": "Проверка"
+                },
+                "E8McL": {
+                  "content": "только что · смена сети"
+                }
+              }
+            },
+            {
+              "id": "zQYr3",
+              "type": "ref",
+              "ref": "x4Vz4",
+              "name": "Строка Группы LS",
+              "width": "fill_container",
+              "descendants": {
+                "Z256NC": {
+                  "content": "Группы LS"
+                },
+                "E8McL": {
+                  "content": "включена «VPN down»",
+                  "fill": "$warn"
+                }
+              }
+            },
+            {
+              "id": "sTYGH",
+              "type": "ref",
+              "ref": "x4Vz4",
+              "name": "Строка Сеть",
+              "width": "fill_container",
+              "descendants": {
+                "Z256NC": {
+                  "content": "Сеть"
+                },
+                "E8McL": {
+                  "content": "Wi-Fi · шлюз 10.0.0.1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "f3p9Qn",
+          "type": "ref",
+          "ref": "U65lf",
+          "name": "Разделитель",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "NJyrj",
+          "name": "Действия",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 1,
+          "padding": [
+            6,
+            8
+          ],
+          "children": [
+            {
+              "id": "huwe4",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Проверить сейчас",
+              "width": "fill_container",
+              "fill": "$bg-hover",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "refresh-cw"
+                },
+                "h0kRhq": {
+                  "content": "Проверить сейчас"
+                },
+                "r6rQP": {
+                  "enabled": false
+                }
+              }
+            },
+            {
+              "id": "Ln8dt",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Пауза мониторинга",
+              "width": "fill_container",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "pause"
+                },
+                "h0kRhq": {
+                  "content": "Пауза мониторинга"
+                },
+                "r6rQP": {
+                  "enabled": false
+                }
+              }
+            },
+            {
+              "id": "QINzR",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Журнал…",
+              "width": "fill_container",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "scroll-text"
+                },
+                "h0kRhq": {
+                  "content": "Журнал…"
+                },
+                "r6rQP": {
+                  "enabled": false
+                }
+              }
+            },
+            {
+              "id": "GCzhH",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Настройки…",
+              "width": "fill_container",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "settings"
+                },
+                "h0kRhq": {
+                  "content": "Настройки…"
+                },
+                "r6rQP": {
+                  "enabled": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "jlk0I",
+          "type": "ref",
+          "ref": "U65lf",
+          "name": "Разделитель",
+          "width": "fill_container"
+        },
+        {
+          "type": "frame",
+          "id": "CRaDJ",
+          "name": "Футер",
+          "width": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            4,
+            8,
+            8,
+            8
+          ],
+          "children": [
+            {
+              "id": "Xp1TL",
+              "type": "ref",
+              "ref": "Q1hvHs",
+              "name": "Пункт Завершить",
+              "width": "fill_container",
+              "descendants": {
+                "qrSIL": {
+                  "icon": "power"
+                },
+                "h0kRhq": {
+                  "content": "Завершить"
+                },
+                "r6rQP": {
+                  "content": "⌘Q"
+                }
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "themes": {
@@ -10828,6 +12000,23 @@
     "icon-xl": {
       "type": "number",
       "value": 26
+    },
+    "warn-bg": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#FF950014",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#FF9F0A20",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
     }
   },
   "fileToken": "ac6d9718-3f51-458e-988d-c835c42568d9"
