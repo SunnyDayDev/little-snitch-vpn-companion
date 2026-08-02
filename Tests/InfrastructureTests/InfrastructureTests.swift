@@ -50,6 +50,27 @@ struct FileJournalStoreTests {
         #expect(JournalFormatting.kind(events[0].kind) == "свежая запись")
     }
 
+    /// Записи с новым триггером «питание» уживаются в одном файле со старыми:
+    /// декодирование ProbeTrigger не сломано расширением enum.
+    @Test("Записи с триггером «питание» читаются вместе со старыми")
+    func powerTriggerRoundTrips() async {
+        let url = temporaryURL()
+        let store = FileJournalStore(fileURL: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        await store.append(JournalEvent(time: Instant(secondsSinceEpoch: 100),
+                                        trigger: .startup,
+                                        kind: .fact("старая запись")))
+        await store.append(JournalEvent(time: Instant(secondsSinceEpoch: 101),
+                                        trigger: .power,
+                                        kind: .fact("машина засыпает")))
+
+        let events = await store.recent(limit: 10)
+        #expect(events.count == 2)
+        #expect(events.last?.trigger == .power)
+        #expect(JournalFormatting.trigger(.power) == "питание")
+    }
+
     @Test("Экспорт даёт человекочитаемые строки")
     func exportsText() async {
         let url = temporaryURL()

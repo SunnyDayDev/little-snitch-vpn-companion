@@ -7,6 +7,8 @@ enum ProbeTrigger: String, Codable, Hashable, CaseIterable {
     case confirmation
     case ruBeacon
     case user
+    /// События системного питания: засыпание и пробуждение (§4.2, слой 4).
+    case power
 }
 
 /// Почему проба не дала ответа. Ни один из вариантов не является утечкой.

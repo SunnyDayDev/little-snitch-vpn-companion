@@ -13,6 +13,11 @@ struct StateMachine {
         case pathChanged
         /// Сеть пропала (path unsatisfied): немедленный Offline без пробы.
         case pathDown
+        /// Система засыпает. Сон НЕ гасит сеть (TCPKeepAlive держит стек), и
+        /// path unsatisfied не приходит — это отдельная граница неопределённости.
+        case systemWillSleep
+        /// Система проснулась (полное или служебное пробуждение).
+        case systemDidWake
         case userPaused
         case userResumed
         case userRequestedProbe
@@ -42,6 +47,9 @@ struct StateMachine {
     private(set) var lastDiagnosis: LeakDiagnosis?
 
     private var consecutiveLeakProbes = 0
+    /// Машина спит (от засыпания до ПОЛНОГО пробуждения, dark wake — тоже
+    /// сон): в строгом режиме вердикт Protected не открывает группы.
+    private var isAsleep = false
     /// Wi-Fi выключается один раз за эпизод недоступности helper.
     private var didEscalateDuringFailure = false
     /// Взводится на старте и при возобновлении: первый же вердикт обязан
@@ -97,6 +105,41 @@ struct StateMachine {
             state = .offline
             // Реактивный: сети нет, утечки нет, группы не трогаем.
             return mode == .strict ? [.reconcile(.offline)] : []
+
+        case .systemWillSleep:
+            // Липкий флаг до полного пробуждения: уход из dark wake обратно
+            // в сон системой НЕ сообщается (замер 2026-08-02: maintenance
+            // sleep 16:02:22 без kIOMessageSystemWillSleep) — открытое в
+            // dark wake осталось бы открытым на весь следующий отрезок сна.
+            isAsleep = true
+            // Засыпание — граница неопределённости (§5): вердикт Protected
+            // протухает вместе с сессией, а проверить его во сне некому.
+            // Реактивный: контракт «блок только при доказанной утечке» —
+            // группы не трогаем, состояние не меняем.
+            guard mode == .strict else { return [] }
+            // Первый вердикт после пробуждения обязан пройти сверку, даже
+            // если состояние не изменится: закрытие могло провалиться.
+            needsReconcile = true
+            // На паузе состояние сохраняется: закрытие здесь — идемпотентная
+            // страховка от неудавшегося закрытия при постановке на паузу
+            // (pausedCloseRetry во сне заморожен).
+            guard state != .paused else { return [.reconcile(.paused)] }
+            consecutiveLeakProbes = 0
+            // Диагноз прошлой сессии после сна недостоверен, включая Leak:
+            // закрыто в обоих случаях, Checking честнее.
+            lastDiagnosis = nil
+            state = .checking
+            return [.reconcile(.checking)]
+
+        case .systemDidWake:
+            // kIOMessageSystemHasPoweredOn приходит только на полном
+            // пробуждении (в dark wake — нет), поэтому здесь окно сна
+            // закончилось достоверно.
+            isAsleep = false
+            guard state != .paused else { return [] }
+            // Проба по событию пробуждения, не в надежде на событие пути:
+            // в той же сети путь может не измениться вовсе.
+            return [.probeNow(.power)]
 
         case .userRequestedProbe:
             return [.probeNow(.user)]
@@ -166,6 +209,15 @@ struct StateMachine {
             consecutiveLeakProbes = 0
             lastTrace = trace
             lastDiagnosis = nil
+            // Во сне (dark wake) protected не открывает: повторное засыпание
+            // из dark wake системой не сообщается, и открытое осталось бы
+            // открытым на весь следующий отрезок сна. Открытие — только по
+            // вердикту после полного пробуждения.
+            if isAsleep, mode == .strict {
+                state = .checking
+                needsReconcile = true
+                return []
+            }
             let previous = state
             state = .protected
             var effects: [Effect] = []

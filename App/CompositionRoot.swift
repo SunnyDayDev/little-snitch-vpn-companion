@@ -22,6 +22,7 @@ enum CompositionRoot {
             directIP: RuBeaconProber(settingsProvider: liveSettings),
             tripwire: TripwireConnection(),
             path: SystemPathMonitor(),
+            power: SystemPowerMonitor(),
             gateway: gateway,
             wifi: NetworksetupWifiGateway(),
             journal: journal,

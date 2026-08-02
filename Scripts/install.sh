@@ -16,12 +16,15 @@ LSREG=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/La
 
 echo "Собираю Release…"
 xcodegen generate >/dev/null
+# Явный derivedDataPath: глоб по ~/Library/.../DerivedData/LittleSnitchVPNCompanion-*
+# однажды подсунул протухший Release из соседней папки (несколько хешей одного
+# проекта, find берёт первый по алфавиту — 2026-08-02, эшелон сна «не работал»).
 xcodebuild -project LittleSnitchVPNCompanion.xcodeproj \
-    -scheme LittleSnitchVPNCompanion -configuration Release build >/dev/null
+    -scheme LittleSnitchVPNCompanion -configuration Release \
+    -derivedDataPath build/DerivedData build >/dev/null
 
-BUILT=$(find ~/Library/Developer/Xcode/DerivedData/LittleSnitchVPNCompanion-*/Build/Products/Release \
-    -maxdepth 1 -name "$APP_NAME" | head -1)
-[ -n "$BUILT" ] || { echo "Не нашёл собранное приложение"; exit 1; }
+BUILT="build/DerivedData/Build/Products/Release/$APP_NAME"
+[ -d "$BUILT" ] || { echo "Не нашёл собранное приложение"; exit 1; }
 
 pkill -f "$APP_NAME" 2>/dev/null || true
 sleep 1
