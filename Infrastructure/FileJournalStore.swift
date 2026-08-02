@@ -136,6 +136,7 @@ enum JournalFormatting {
         case .confirmation: "подтверждение"
         case .ruBeacon: "ру-маяк"
         case .user: "пользователь"
+        case .power: "питание"
         }
     }
 

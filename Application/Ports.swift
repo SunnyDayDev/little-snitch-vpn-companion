@@ -39,6 +39,16 @@ protocol PathMonitoring: Sendable {
     func stop() async
 }
 
+protocol PowerMonitoring: Sendable {
+    /// События системного питания (§4.2, слой 4). `onWillSleep` асинхронный
+    /// намеренно: его возврат — сигнал «закрытие выполнено», и только после
+    /// него (или по истечении собственного бюджета) инфраструктура
+    /// подтверждает системе уход в сон.
+    func start(onWillSleep: @escaping @Sendable () async -> Void,
+               onDidWake: @escaping @Sendable () -> Void) async
+    func stop() async
+}
+
 /// Сведения о пути для инфо-строки «Сеть» в поповере.
 struct NetworkPathInfo: Hashable, Sendable {
     let isSatisfied: Bool

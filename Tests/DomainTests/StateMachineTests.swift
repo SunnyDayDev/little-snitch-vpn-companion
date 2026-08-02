@@ -190,6 +190,31 @@ struct StateMachineTests {
         #expect(machine.handle(.probed(leak, trigger: .path)) == [.scheduleLeakConfirmation])
     }
 
+    // MARK: - Сон и пробуждение
+
+    @Test("Засыпание в реактивном режиме: тишина, группы не трогаем")
+    func sleepIsQuietInReactive() {
+        var machine = machine(in: .protected)
+        #expect(machine.handle(.systemWillSleep).isEmpty)
+        #expect(machine.state == .protected)
+    }
+
+    @Test("Пробуждение → немедленная проба")
+    func wakeTriggersProbe() {
+        var machine = machine(in: .protected)
+        #expect(machine.handle(.systemDidWake) == [.probeNow(.power)])
+        #expect(machine.state == .protected)
+    }
+
+    @Test("Сон и пробуждение на паузе игнорируются")
+    func sleepAndWakeIgnoredWhilePaused() {
+        var machine = machine(in: .protected)
+        _ = machine.handle(.userPaused)
+        #expect(machine.handle(.systemWillSleep).isEmpty)
+        #expect(machine.handle(.systemDidWake).isEmpty)
+        #expect(machine.state == .paused)
+    }
+
     // MARK: - Пауза
 
     @Test("Пауза: состояние Paused, группы не трогаем")
@@ -464,5 +489,133 @@ struct StrictStateMachineTests {
         _ = machine.handle(.pathDown, mode: .strict)
         let effects = machine.handle(.helperFailed("нет связи"), mode: .strict)
         #expect(effects == [.notifyHelperFailure("нет связи")])
+    }
+
+    // MARK: - Сон и пробуждение
+
+    @Test("Засыпание из Protected: Checking с закрывающим reconcile")
+    func sleepFromProtectedCloses() {
+        var machine = protectedMachine()
+        #expect(machine.handle(.systemWillSleep, mode: .strict)
+            == [.reconcile(.checking)])
+        #expect(machine.state == .checking)
+    }
+
+    @Test("Засыпание из Leak: Checking, диагноз недостоверен, закрыто")
+    func sleepFromLeakStaysClosed() {
+        var machine = protectedMachine()
+        _ = machine.handle(.probed(leak, trigger: .scheduled), mode: .strict)
+        _ = machine.handle(.probed(leak, trigger: .confirmation), mode: .strict)
+        #expect(machine.state == .leak)
+
+        #expect(machine.handle(.systemWillSleep, mode: .strict)
+            == [.reconcile(.checking)])
+        #expect(machine.state == .checking)
+        #expect(machine.lastDiagnosis == nil)
+        // Счётчик подтверждения сброшен: после пробуждения утечка
+        // фиксируется заново, с двух проб
+        #expect(machine.handle(.probed(leak, trigger: .power), mode: .strict)
+            == [.scheduleLeakConfirmation])
+    }
+
+    @Test("Засыпание из Offline и Checking: единообразный Checking")
+    func sleepFromClosedStatesIsUniform() {
+        var machine = protectedMachine()
+        _ = machine.handle(.pathDown, mode: .strict)
+        #expect(machine.state == .offline)
+        #expect(machine.handle(.systemWillSleep, mode: .strict)
+            == [.reconcile(.checking)])
+        #expect(machine.state == .checking)
+        // Повторное засыпание из Checking (цикл dark wake) — тот же эффект
+        #expect(machine.handle(.systemWillSleep, mode: .strict)
+            == [.reconcile(.checking)])
+        #expect(machine.state == .checking)
+    }
+
+    @Test("Засыпание на паузе: Paused сохраняется, закрытие идемпотентно")
+    func sleepWhilePausedKeepsPaused() {
+        var machine = protectedMachine()
+        _ = machine.handle(.userPaused, mode: .strict)
+        #expect(machine.handle(.systemWillSleep, mode: .strict)
+            == [.reconcile(.paused)])
+        #expect(machine.state == .paused)
+        #expect(machine.handle(.systemDidWake, mode: .strict).isEmpty)
+    }
+
+    @Test("Пробуждение: проба, открытие только по Protected-вердикту")
+    func wakeProbesAndStaysClosedUntilVerdict() {
+        var machine = protectedMachine()
+        _ = machine.handle(.systemWillSleep, mode: .strict)
+        #expect(machine.handle(.systemDidWake, mode: .strict)
+            == [.probeNow(.power)])
+        #expect(machine.state == .checking)
+        #expect(machine.handle(.probed(protected, trigger: .power), mode: .strict)
+            == [.reconcile(.protected)])
+        #expect(machine.state == .protected)
+    }
+
+    /// Регрессия на застревание закрытым: если бы закрытие на сон шло мимо
+    /// машины, первый protected после пробуждения не дал бы reconcile
+    /// (previous == .protected, needsReconcile == false) — и группы остались
+    /// бы включёнными навсегда.
+    @Test("Цикл сон → пробуждение → protected обязан открыть группы")
+    func sleepWakeCycleReopensOnProtected() {
+        var machine = protectedMachine()
+        _ = machine.handle(.systemWillSleep, mode: .strict)
+        _ = machine.handle(.systemDidWake, mode: .strict)
+        let effects = machine.handle(.probed(protected, trigger: .power), mode: .strict)
+        #expect(effects.contains(.reconcile(.protected)))
+    }
+
+    /// Уход из dark wake обратно в сон системой не сообщается (замер
+    /// 2026-08-02): открытое в dark wake осталось бы открытым на весь
+    /// следующий отрезок сна. Поэтому во сне protected не открывает.
+    @Test("Вердикт Protected в dark wake не открывает группы")
+    func protectedVerdictDuringSleepStaysClosed() {
+        var machine = protectedMachine()
+        _ = machine.handle(.systemWillSleep, mode: .strict)
+        // Dark wake: событие пути и проба с вердиктом protected
+        _ = machine.handle(.pathShifted, mode: .strict)
+        let effects = machine.handle(.probed(protected, trigger: .path), mode: .strict)
+        #expect(effects.isEmpty)
+        #expect(machine.state == .checking)
+        // И плановая проба тоже не открывает, сколько бы их ни было
+        #expect(machine.handle(.probed(protected, trigger: .scheduled), mode: .strict).isEmpty)
+        #expect(machine.state == .checking)
+    }
+
+    @Test("После полного пробуждения тот же вердикт открывает")
+    func protectedVerdictAfterFullWakeOpens() {
+        var machine = protectedMachine()
+        _ = machine.handle(.systemWillSleep, mode: .strict)
+        _ = machine.handle(.probed(protected, trigger: .path), mode: .strict)
+        #expect(machine.state == .checking)
+
+        _ = machine.handle(.systemDidWake, mode: .strict)
+        #expect(machine.handle(.probed(protected, trigger: .power), mode: .strict)
+            == [.reconcile(.protected)])
+        #expect(machine.state == .protected)
+    }
+
+    @Test("Утечка в dark wake закрывает и фиксируется — закрытие во сне разрешено")
+    func leakDuringSleepStillCloses() {
+        var machine = protectedMachine()
+        _ = machine.handle(.systemWillSleep, mode: .strict)
+        _ = machine.handle(.probed(leak, trigger: .path), mode: .strict)
+        let effects = machine.handle(.probed(leak, trigger: .confirmation), mode: .strict)
+        #expect(effects == [.reconcile(.leak), .notifyLeak(.foreignEgress)])
+        #expect(machine.state == .leak)
+    }
+
+    @Test("Отменённое засыпание: пробуждение снимает липкий флаг")
+    func abortedSleepClearsStickyFlag() {
+        var machine = protectedMachine()
+        // Система начала засыпать и передумала (sleep revert)
+        _ = machine.handle(.systemWillSleep, mode: .strict)
+        _ = machine.handle(.systemDidWake, mode: .strict)
+        // Вердикт открывает: окно сна закончилось
+        #expect(machine.handle(.probed(protected, trigger: .power), mode: .strict)
+            == [.reconcile(.protected)])
+        #expect(machine.state == .protected)
     }
 }
