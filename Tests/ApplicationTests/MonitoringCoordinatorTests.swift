@@ -286,16 +286,100 @@ struct MonitoringCoordinatorTests {
         let harness = makeHarness(clock: clock)
         await harness.beacon.setFallback(.body(TestData.protectedBody))
 
-        let info = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
-        async let first: Void = harness.coordinator.handlePathChange(info)
-        async let second: Void = harness.coordinator.handlePathChange(info)
-        async let third: Void = harness.coordinator.handlePathChange(info)
+        // Сведения различаются: шквал не дедуплицируется, его гасит debounce
+        async let first: Void = harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi"))
+        async let second: Void = harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi + туннель"))
+        async let third: Void = harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi B"))
 
         await clock.waitForSleepers(3)
         await clock.advance(by: 1)
         _ = await (first, second, third)
 
         #expect(await harness.beacon.callCount == 1)
+    }
+
+    // MARK: - Дедупликация событий пути
+
+    @Test("Повтор события пути без смены сведений игнорируется целиком")
+    func duplicatePathEventIsIgnored() async {
+        let harness = makeHarness(directIPFallback: TestData.providerIP)
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+
+        let info = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
+        await harness.coordinator.handlePathChange(info)
+        #expect(await harness.coordinator.snapshot.directRuIP == TestData.providerIP)
+        let journalBefore = await harness.journal.events.count
+        let probesBefore = await harness.beacon.callCount
+        let ruBeaconBefore = await harness.directIP.callCount
+
+        await harness.coordinator.handlePathChange(info)
+
+        // Ни записи в журнал, ни пробы, ни сброса и перезапроса прямого РУ-IP
+        #expect(await harness.journal.events.count == journalBefore)
+        #expect(await harness.beacon.callCount == probesBefore)
+        #expect(await harness.directIP.callCount == ruBeaconBefore)
+        #expect(await harness.coordinator.snapshot.directRuIP == TestData.providerIP)
+    }
+
+    @Test("Возврат сети после пропажи не дедуплицируется")
+    func pathReturnAfterDownIsProcessed() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        let up = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
+
+        await harness.coordinator.handlePathChange(up)
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: false, interfaceDescription: "нет сети"))
+        #expect(await harness.coordinator.snapshot.state == .offline)
+
+        // Те же интерфейсы, но isSatisfied другой — событие обрабатывается
+        await harness.coordinator.handlePathChange(up)
+
+        #expect(await harness.coordinator.snapshot.state == .protected)
+    }
+
+    @Test("Первое событие пути после пробуждения обрабатывается без смены сведений")
+    func wakeResetsPathDeduplication() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+        let info = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
+        await harness.coordinator.handlePathChange(info)
+
+        await harness.coordinator.handleSystemDidWake()
+        await harness.coordinator.handlePathChange(info)
+
+        // За время сна сеть могла смениться на неотличимую — факт смены пути
+        // в журнале обязан появиться второй раз
+        let pathFacts = await harness.journal.events.compactMap { event -> String? in
+            guard case .fact(let text) = event.kind else { return nil }
+            return text.contains("сетевой путь изменился") ? text : nil
+        }
+        #expect(pathFacts.count == 2)
+    }
+
+    @Test("После паузы и возобновления идентичное событие пути обрабатывается")
+    func resumeResetsPathDeduplication() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        let info = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
+        await harness.coordinator.handlePathChange(info)
+
+        await harness.coordinator.pause()
+        await harness.coordinator.resume()
+        await harness.coordinator.handlePathChange(info)
+
+        let pathFacts = await harness.journal.events.compactMap { event -> String? in
+            guard case .fact(let text) = event.kind else { return nil }
+            return text.contains("сетевой путь изменился") ? text : nil
+        }
+        #expect(pathFacts.count == 2)
+        await harness.coordinator.stop()
     }
 
     // MARK: - Отказ helper и эскалация

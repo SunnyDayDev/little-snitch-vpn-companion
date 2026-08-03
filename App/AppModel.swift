@@ -481,7 +481,9 @@ final class AppModel {
     private(set) var journalExportText = ""
 
     func refreshJournal() async {
-        journalEvents = await journal.recent(limit: 500)
+        // Без отсечки: фильтр окна применяется по всей глубине хранения
+        // (7 суток), лимит показа — забота отображения (JournalDisplay).
+        journalEvents = await journal.recent(limit: .max)
         journalExportText = await journal.exportText()
     }
 

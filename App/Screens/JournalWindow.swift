@@ -17,6 +17,10 @@ struct JournalWindow: View {
         ("Ошибки", .error),
     ]
 
+    /// Лимит — свойство отображения, применяется ПОСЛЕ фильтра: шумная
+    /// категория не должна голодить редкую (см. JournalDisplay).
+    private static let displayLimit = 2000
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
@@ -43,11 +47,12 @@ struct JournalWindow: View {
     }
 
     private var content: some View {
-        VStack(spacing: DSMetrics.Journal.contentGap) {
+        let slice = self.slice
+        return VStack(spacing: DSMetrics.Journal.contentGap) {
             VStack(spacing: 0) {
                 JournalHeaderRow()
                 DSSeparator()
-                if visibleEvents.isEmpty {
+                if slice.events.isEmpty {
                     Text("Записей нет")
                         .font(DSFont.secondary)
                         .foregroundStyle(DSColor.textTertiary)
@@ -58,7 +63,7 @@ struct JournalWindow: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(visibleEvents.enumerated()), id: \.offset) { index, event in
+                            ForEach(Array(slice.events.enumerated()), id: \.offset) { index, event in
                                 if index > 0 { DSSeparator() }
                                 JournalRow(event: event)
                             }
@@ -70,7 +75,7 @@ struct JournalWindow: View {
             .background(DSColor.bgCard, in: RoundedRectangle(cornerRadius: DSRadius.lg))
 
             HStack {
-                Text(counterText)
+                Text(counterText(for: slice))
                     .font(DSFont.caption)
                     .foregroundStyle(DSColor.textTertiary)
                 Spacer()
@@ -82,15 +87,16 @@ struct JournalWindow: View {
         .padding(DSMetrics.Journal.contentPadding)
     }
 
-    private var counterText: String {
-        "\(model.journalEvents.count) событий · хранятся 7 дней"
+    private func counterText(for slice: JournalDisplay.Slice) -> String {
+        slice.isTruncated
+            ? "показаны последние \(slice.events.count) из \(slice.totalMatching) · хранятся 7 дней"
+            : "\(slice.totalMatching) событий · хранятся 7 дней"
     }
 
-    private var visibleEvents: [JournalEvent] {
-        let category = Self.filters[filter].category
-        let events = model.journalEvents.reversed()
-        guard let category else { return Array(events) }
-        return events.filter { $0.kind.category == category }
+    private var slice: JournalDisplay.Slice {
+        JournalDisplay.slice(of: model.journalEvents,
+                             category: Self.filters[filter].category,
+                             limit: Self.displayLimit)
     }
 
     /// Экспортируем весь журнал, а не только показанные строки: фильтр — это

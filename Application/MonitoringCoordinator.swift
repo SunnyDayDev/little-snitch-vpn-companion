@@ -42,6 +42,12 @@ actor MonitoringCoordinator {
     private let evaluateProbe: EvaluateProbe
 
     private var pathGeneration = 0
+    /// Последний ОБРАБОТАННЫЙ путь — память дедупликации: NWPathMonitor дёргает
+    /// обработчик и без фактической смены сети (DNS, viability — замер: медиана
+    /// 19 с в неподвижной сети), и повтор не должен порождать ни каскада
+    /// журнала, ни сброса РУ-маяка, ни пробы. Сбрасывается на границах сна и
+    /// старта детектора: за ними сеть могла смениться на неотличимую.
+    private var lastHandledPath: NetworkPathInfo?
     /// Номер последней запущенной пробы: вердикт устаревшей пробы применять
     /// нельзя — иначе поздний protected снимет уже подтверждённую утечку.
     private var probeGeneration = 0
@@ -143,6 +149,9 @@ actor MonitoringCoordinator {
     }
 
     private func startDetectorLayers() async {
+        // Свежий монитор пути — чистая память дедупликации: первое событие
+        // после старта или возобновления обязано пройти полный каскад.
+        lastHandledPath = nil
         await startTripwire()
         await path.start { [weak self] info in
             Task { await self?.handlePathChange(info) }
@@ -202,6 +211,10 @@ actor MonitoringCoordinator {
     }
 
     func handlePathChange(_ info: NetworkPathInfo) async {
+        // Повтор без фактической смены сведений — не смена сети: выход до
+        // любых эффектов. Снапшот пути при равенстве уже актуален.
+        guard info != lastHandledPath else { return }
+        lastHandledPath = info
         snapshotValue.path = info
         // §4.4: ответ РУ-маяка живёт до следующей смены сети — иначе прямой IP
         // прошлой сети остался бы в denylist и дал бы ложную утечку.
@@ -284,6 +297,10 @@ actor MonitoringCoordinator {
     /// измениться вовсе.
     func handleSystemDidWake() async {
         guard !isTerminating else { return }
+        // За время сна сеть могла смениться на неотличимую по NetworkPathInfo
+        // (другой Wi-Fi с тем же шлюзом): досыпной памяти дедупликации верить
+        // нельзя — первое событие пути после пробуждения обрабатывается всегда.
+        lastHandledPath = nil
         await journalFact(.power, "машина проснулась")
         guard isActive else { return }
         await dispatch(.systemDidWake, trigger: .power)
