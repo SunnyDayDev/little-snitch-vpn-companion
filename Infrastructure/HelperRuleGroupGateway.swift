@@ -74,10 +74,12 @@ actor HelperRuleGroupGateway: RuleGroupGateway, FailsafeSyncing {
         let connection = NSXPCConnection(machServiceName: HelperConstants.machServiceName,
                                          options: .privileged)
         connection.remoteObjectInterface = NSXPCInterface(with: HelperProtocol.self)
-        connection.invalidationHandler = { [weak self] in
+        // См. комментарий в HelperPresenceConnection: `@Sendable` нужен, чтобы
+        // замыкание проходило как `sending`-параметр и на Xcode 26.3, и на 26.6.
+        connection.invalidationHandler = { @Sendable [weak self] in
             Task { await self?.clearConnection() }
         }
-        connection.interruptionHandler = { [weak self] in
+        connection.interruptionHandler = { @Sendable [weak self] in
             Task { await self?.clearConnection() }
         }
         connection.resume()

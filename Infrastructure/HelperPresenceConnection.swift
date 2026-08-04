@@ -33,12 +33,16 @@ actor HelperPresenceConnection {
         connection.remoteObjectInterface = NSXPCInterface(with: HelperProtocol.self)
         // Немедленная переустановка (D5): пауза дольше таймаута супервизии
         // выглядела бы для helper как крэш приложения.
-        connection.invalidationHandler = { [weak self] in
+        // `@Sendable` обязателен: обработчики — `sending`-параметры, и без явной
+        // пометки компилятор (проверено на Xcode 26.3) считает замыкание связанным
+        // с регионом актора и отвергает передачу. Захват здесь и так безопасен —
+        // `weak self` актора сам по себе Sendable.
+        connection.invalidationHandler = { @Sendable [weak self] in
             Task { await self?.reestablish() }
         }
         // Прерывание — helper перезапустился: соединение живо, но новый
         // процесс демона этого клиента ещё не считал. Представляемся заново.
-        connection.interruptionHandler = { [weak self] in
+        connection.interruptionHandler = { @Sendable [weak self] in
             Task { await self?.poke() }
         }
         connection.resume()
