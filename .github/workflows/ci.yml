@@ -34,3 +34,52 @@ jobs:
           -destination 'platform=macOS'
           CODE_SIGN_IDENTITY=-
           test
+
+  # Нижняя граница поддерживаемого диапазона (deployment target 15.7). Отдельный job,
+  # а не matrix: имя проверки выше — required check в защите ветки, matrix бы его
+  # переименовал и молча заблокировал мерж.
+  test-sequoia:
+    name: Тесты (macOS 15)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # На образе macos-15 по умолчанию выбран Xcode 16.4 — это SDK macOS 15 и другой
+      # компилятор, чем у разработчика и в релизе. Берём новейший установленный 26.x;
+      # если такого нет — падаем, а не проверяем молча не ту конфигурацию.
+      - name: Выбрать Xcode 26.x
+        run: |
+          set -euo pipefail
+          # `|| true` обязателен: под pipefail неудачный ls обрывает шаг до печати
+          # диагностики, и job краснеет без объяснения причины.
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$XCODE" ]; then
+            echo "::error::На образе нет ни одного Xcode 26.x — проверять нечем"
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Окружение прогона
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      - name: Проверка чистоты Domain
+        run: ./Scripts/check-domain-purity.sh
+
+      - name: Установить XcodeGen
+        run: brew install xcodegen
+
+      - name: Сгенерировать проект
+        run: xcodegen generate
+
+      - name: Тесты
+        run: >
+          xcodebuild
+          -project LittleSnitchVPNCompanion.xcodeproj
+          -scheme LittleSnitchVPNCompanion
+          -configuration Debug
+          -destination 'platform=macOS'
+          CODE_SIGN_IDENTITY=-
+          test

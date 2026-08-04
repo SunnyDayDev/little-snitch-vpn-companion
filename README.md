@@ -52,13 +52,27 @@ VPN-клиент упал, переподключается или «тихо» 
 
 ## Что понадобится
 
-- macOS 26+ (собрано и проверено на 26.5.2, Apple Silicon)
-- Xcode 26+
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) — проект
-  генерируется из `project.yml`, сам `.xcodeproj` в git не хранится
+**Для запуска:**
+
+- macOS 15.7+ (поддерживаемый диапазон — 15.7–26.x)
 - Little Snitch 6 в `/Applications/Little Snitch.app`
 - rule group в Little Snitch с запрещающими правилами (по умолчанию ожидается имя
   **«VPN down»**; любое другое задаётся в настройках)
+
+**Для сборки** — дополнительно:
+
+- Xcode 26.x. На Sequoia ставятся только 26.0–26.3 (им нужна macOS 15.6+), а Xcode 26.4
+  и новее требуют macOS 26.2+. Сборка идёт против SDK 26 при deployment target 15.7 —
+  штатная схема, отдельно ничего настраивать не нужно
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) — проект
+  генерируется из `project.yml`, сам `.xcodeproj` в git не хранится
+
+Проверено: сборка и тесты на macOS 26.5.2 (Xcode 26.6, Apple Silicon) и в CI на образе
+macOS 15.7 с Xcode 26.x; живая эксплуатация — на 26.x (Apple Silicon) и на 15.7.8 (Intel).
+
+Артефакт универсальный (`arm64` + `x86_64`), поэтому Intel-машине собственный Xcode не
+нужен: приложение собирается на Apple Silicon и переносится готовым бандлом — см.
+«[Перенос на другую машину](#перенос-на-другую-машину)».
 
 ## Сборка и запуск
 
@@ -90,6 +104,50 @@ LaunchServices и запускает установленную копию. `/Ap
 После первой установки (и после каждого обновления, меняющего helper) демон
 нужно перерегистрировать: **Настройки → Общие → «Переустановить…»**, затем
 одобрить объект входа.
+
+### Перенос на другую машину
+
+Xcode на целевой машине не нужен: артефакт универсальный (`arm64` + `x86_64`), и
+Intel-машина запускает его нативно. Для Intel это единственный путь — Xcode 26 в
+App Store отдаётся сборкой под Apple Silicon.
+
+Сертификат подписи переносить тоже не нужно: он встроен в подпись, а helper строит
+XPC-requirement из собственной подписи — «клиент подписан тем же сертификатом, что и я».
+Совпадение проверяется внутри бандла, связка ключей целевой машины ни при чём.
+
+Собрать Release и упаковать (`ditto` сохраняет подпись и обе архитектуры):
+
+```bash
+xcodebuild -project LittleSnitchVPNCompanion.xcodeproj -scheme LittleSnitchVPNCompanion -configuration Release build
+```
+
+```bash
+ditto -c -k --sequesterRsrc --keepParent ~/Library/Developer/Xcode/DerivedData/LittleSnitchVPNCompanion-*/Build/Products/Release/"Little Snitch VPN Companion.app" ~/Downloads/LSVPNCompanion.zip
+```
+
+На целевой машине распаковывать **сразу в `~/Applications`** — запуск из `~/Downloads`
+привяжет демона к этому пути в базе BTM (см. «Грабли», п. 1):
+
+```bash
+ditto -x -k ~/Downloads/LSVPNCompanion.zip ~/Applications
+```
+
+```bash
+xattr -dr com.apple.quarantine ~/Applications/"Little Snitch VPN Companion.app"
+```
+
+```bash
+/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f -R -trusted ~/Applications/"Little Snitch VPN Companion.app"
+```
+
+Приложение не нотаризовано. Если архив приехал через AirDrop, браузер или почту, на нём
+стоит флаг карантина — снимает его команда `xattr` выше. Без неё первый запуск отклоняется,
+и в Sequoia обход через Control-click → «Открыть» больше не работает: остаётся
+**Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»**.
+Передача через `scp`, `rsync` или внешний диск карантина не ставит вовсе.
+
+Дальше — как при обычной установке: открыть, пройти онбординг, одобрить объект входа.
+Little Snitch, его rule group и доступ для CLI на целевой машине настраиваются отдельно.
 
 ## Настройка под себя
 
@@ -311,6 +369,9 @@ Snitch: тот же синий градиентный квадрат и бела
 
 ## Статус и ограничения
 
+- Диапазон macOS — 15.7–26.x, обе границы проверены живой эксплуатацией: macOS 26.x на
+  Apple Silicon и macOS 15.7.8 (Sequoia) на Intel, где приложение работает несколько дней
+  без отличий в поведении. Сборка и тесты на обеих границах прогоняются в CI.
 - Заточено под конкретный сценарий: цепочка с Cloudflare WARP последним звеном и
   российский провайдер как «прямой» путь. Другие конфигурации работают через
   `expectedIPs`, но именно WARP-эвристика (`warp=on`) — основной сигнал «защищён».

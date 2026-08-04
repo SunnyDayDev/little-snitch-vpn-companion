@@ -2,7 +2,7 @@ name: LittleSnitchVPNCompanion
 options:
   createIntermediateGroups: true
   deploymentTarget:
-    macOS: "26.0"
+    macOS: "15.7"
 
 configFiles:
   Debug: Signing.xcconfig
@@ -11,7 +11,11 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.7"
+    # Обе архитектуры явно, а не через ARCHS_STANDARD: приложение переносится готовым
+    # бандлом на Intel-машину (Xcode 26 в App Store — только под Apple Silicon), и в день,
+    # когда Apple уберёт x86_64 из «стандартных», сборка молча перестала бы там запускаться.
+    ARCHS: arm64 x86_64
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
     SWIFT_EMIT_LOC_STRINGS: NO
