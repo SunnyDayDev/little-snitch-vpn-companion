@@ -33,6 +33,7 @@ actor MonitoringCoordinator {
     private let directIP: any DirectIPProbing
     private let tripwire: any TripwireMonitoring
     private let path: any PathMonitoring
+    private let power: any PowerMonitoring
     private let journal: any JournalStore
     private let notifications: any NotificationPresenting
     private let clock: any Clock
@@ -41,6 +42,12 @@ actor MonitoringCoordinator {
     private let evaluateProbe: EvaluateProbe
 
     private var pathGeneration = 0
+    /// Последний ОБРАБОТАННЫЙ путь — память дедупликации: NWPathMonitor дёргает
+    /// обработчик и без фактической смены сети (DNS, viability — замер: медиана
+    /// 19 с в неподвижной сети), и повтор не должен порождать ни каскада
+    /// журнала, ни сброса РУ-маяка, ни пробы. Сбрасывается на границах сна и
+    /// старта детектора: за ними сеть могла смениться на неотличимую.
+    private var lastHandledPath: NetworkPathInfo?
     /// Номер последней запущенной пробы: вердикт устаревшей пробы применять
     /// нельзя — иначе поздний protected снимет уже подтверждённую утечку.
     private var probeGeneration = 0
@@ -64,6 +71,7 @@ actor MonitoringCoordinator {
          directIP: any DirectIPProbing,
          tripwire: any TripwireMonitoring,
          path: any PathMonitoring,
+         power: any PowerMonitoring,
          gateway: any RuleGroupGateway,
          wifi: any WifiPowerGateway,
          journal: any JournalStore,
@@ -74,6 +82,7 @@ actor MonitoringCoordinator {
         self.directIP = directIP
         self.tripwire = tripwire
         self.path = path
+        self.power = power
         self.journal = journal
         self.notifications = notifications
         self.clock = clock
@@ -104,6 +113,7 @@ actor MonitoringCoordinator {
         guard !isRunning else { return }
         isRunning = true
         isActive = true
+        await startPowerLayer()
         await startDetectorLayers()
         // В строгом режиме эффекты старта закрывают группы ДО первой пробы.
         await dispatch(.started, trigger: .startup)
@@ -115,7 +125,17 @@ actor MonitoringCoordinator {
         isActive = false
         pausedCloseRetry?.cancel()
         pausedCloseRetry = nil
+        await power.stop()
         await stopDetectorLayers()
+    }
+
+    /// Слой питания живёт с координатором, а не с детектором: pause()
+    /// останавливает детекторные слои, но закрытие на засыпании обязано
+    /// работать и на паузе — pausedCloseRetry во сне заморожен (Решение 5).
+    private func startPowerLayer() async {
+        await power.start(
+            onWillSleep: { [weak self] in await self?.handleSystemWillSleep() },
+            onDidWake: { [weak self] in Task { await self?.handleSystemDidWake() } })
     }
 
     /// Настройки изменились: перезапускаем растяжку, если поменялся heartbeat.
@@ -129,6 +149,9 @@ actor MonitoringCoordinator {
     }
 
     private func startDetectorLayers() async {
+        // Свежий монитор пути — чистая память дедупликации: первое событие
+        // после старта или возобновления обязано пройти полный каскад.
+        lastHandledPath = nil
         await startTripwire()
         await path.start { [weak self] info in
             Task { await self?.handlePathChange(info) }
@@ -188,6 +211,10 @@ actor MonitoringCoordinator {
     }
 
     func handlePathChange(_ info: NetworkPathInfo) async {
+        // Повтор без фактической смены сведений — не смена сети: выход до
+        // любых эффектов. Снапшот пути при равенстве уже актуален.
+        guard info != lastHandledPath else { return }
+        lastHandledPath = info
         snapshotValue.path = info
         // §4.4: ответ РУ-маяка живёт до следующей смены сети — иначе прямой IP
         // прошлой сети остался бы в denylist и дал бы ложную утечку.
@@ -220,6 +247,63 @@ actor MonitoringCoordinator {
         await journalFact(.path, "сетевой путь изменился: \(info.interfaceDescription)")
         await execute(machine.handle(.pathChanged, mode: settings.protectionMode))
         await refreshDirectIP()
+    }
+
+    /// Система засыпает (§4.2, слой 4). Возврат из метода — сигнал
+    /// инфраструктуре подтвердить системе уход в сон, поэтому закрытие
+    /// выполняется здесь же, без отложенных задач.
+    func handleSystemWillSleep() async {
+        guard !isTerminating else { return }
+        // Вердикт пробы, ушедшей до засыпания, описывает прошлую сессию:
+        // поздний protected не должен открыть группы в момент засыпания.
+        probeGeneration += 1
+        await journalFact(.power, "машина засыпает")
+
+        let previous = machine.state
+        let effects = machine.handle(.systemWillSleep, mode: settings.protectionMode)
+        if machine.state != previous {
+            await journalTransition(from: previous, to: machine.state, trigger: .power)
+        }
+        syncSnapshotFromMachine()
+        // Реактивный режим: эффектов нет, группы не трогаем.
+        guard !effects.isEmpty else { return }
+
+        // Закрытие — напрямую через forceEnable, минуя reconcile(): его гейт
+        // isActive проглотил бы закрытие на паузе, а листинг групп — лишний
+        // холодный XPC в бюджете перед сном (Решения 4 и 5 design.md).
+        let outcome = await applyPolicy.forceEnable(groups: settings.leakGroups,
+                                                    settings: settings)
+        switch outcome {
+        case .applied:
+            await journal.append(JournalEvent(time: await clock.now(),
+                                              trigger: .power,
+                                              kind: .action("группы закрыты: машина засыпает")))
+        case .failed(let error):
+            // Приложение переживёт сон — в отличие от завершения, здесь
+            // провал обязан взвести needsReconcile через helperFailed, чтобы
+            // первый вердикт после пробуждения досверил группы (Решение 8).
+            await journal.append(JournalEvent(time: await clock.now(),
+                                              trigger: .power,
+                                              kind: .warning("не удалось закрыть при засыпании: \(error.message) "
+                                                  + "— сверка при первом вердикте после пробуждения")))
+        case .skippedNoTarget, .skippedObserveOnly:
+            break
+        }
+        await process(outcome, targetCloses: true)
+    }
+
+    /// Система проснулась (полное или служебное пробуждение): немедленная
+    /// проба, не в надежде на событие пути — в той же сети путь может не
+    /// измениться вовсе.
+    func handleSystemDidWake() async {
+        guard !isTerminating else { return }
+        // За время сна сеть могла смениться на неотличимую по NetworkPathInfo
+        // (другой Wi-Fi с тем же шлюзом): досыпной памяти дедупликации верить
+        // нельзя — первое событие пути после пробуждения обрабатывается всегда.
+        lastHandledPath = nil
+        await journalFact(.power, "машина проснулась")
+        guard isActive else { return }
+        await dispatch(.systemDidWake, trigger: .power)
     }
 
     /// Действие пользователя «Проверить сейчас». Без работающего детектора
@@ -278,6 +362,9 @@ actor MonitoringCoordinator {
         isActive = true
         if !isRunning {
             isRunning = true
+            // После stop() слой питания тоже остановлен; после pause() —
+            // жив, и повторный start у монитора обязан быть no-op.
+            await startPowerLayer()
             await startDetectorLayers()
         }
         // Мониторинг могли включить тумблером, ни разу не запускав детектор:
@@ -335,6 +422,9 @@ actor MonitoringCoordinator {
         isTerminating = true
         pausedCloseRetry?.cancel()
         pausedCloseRetry = nil
+        // Слой питания замолкает: подтверждение сна не должно зависеть от
+        // умирающего процесса, а его закрытие уже выполняется ниже.
+        await power.stop()
         guard settings.protectionMode == .strict else { return }
         isActive = false
         isRunning = false

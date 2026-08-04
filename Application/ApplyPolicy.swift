@@ -74,7 +74,16 @@ struct ApplyPolicy: Sendable {
     /// helper стоит до 6 с, и листинг+включение в бюджет не влезали). Ошибка
     /// одной группы не прерывает остальные: закрыть максимум возможного.
     func forceEnable(groups: [String], settings: AppSettings) async -> Outcome {
-        guard !settings.observeOnly else { return .skippedObserveOnly(operations: []) }
+        guard !settings.observeOnly else {
+            // ФТ-10: обкатка строгого режима видна в журнале и на быстром
+            // пути — иначе закрытия на завершении и на засыпании были бы
+            // невидимы и режим наблюдения врал бы о своей бездеятельности.
+            let operations = groups.map { RuleGroupOperation(name: $0, enable: true) }
+            if !operations.isEmpty {
+                await journalAction("строгий режим: закрыл бы группы — наблюдение, не тронуты (\(describe(operations)))")
+            }
+            return .skippedObserveOnly(operations: operations)
+        }
         var operations: [RuleGroupOperation] = []
         var lastError: RuleGroupGatewayError?
         for name in groups {

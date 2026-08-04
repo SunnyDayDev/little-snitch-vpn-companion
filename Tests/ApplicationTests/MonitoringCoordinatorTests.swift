@@ -8,6 +8,7 @@ struct MonitoringCoordinatorTests {
         let directIP: FakeDirectIP
         let tripwire: FakeTripwire
         let path: FakePathMonitor
+        let power: FakePowerMonitor
         let gateway: FakeRuleGroupGateway
         let wifi: FakeWifi
         let journal: FakeJournal
@@ -22,6 +23,7 @@ struct MonitoringCoordinatorTests {
         let directIP = FakeDirectIP(fallback: directIPFallback)
         let tripwire = FakeTripwire()
         let path = FakePathMonitor()
+        let power = FakePowerMonitor()
         let gateway = FakeRuleGroupGateway(groups: groups)
         let wifi = FakeWifi()
         let journal = FakeJournal()
@@ -30,10 +32,12 @@ struct MonitoringCoordinatorTests {
         return Harness(
             coordinator: MonitoringCoordinator(
                 settingsProvider: { settings }, beacon: beacon, directIP: directIP,
-                tripwire: tripwire, path: path, gateway: gateway, wifi: wifi,
-                journal: journal, notifications: notifications, clock: clock),
+                tripwire: tripwire, path: path, power: power, gateway: gateway,
+                wifi: wifi, journal: journal, notifications: notifications,
+                clock: clock),
             beacon: beacon, directIP: directIP, tripwire: tripwire, path: path,
-            gateway: gateway, wifi: wifi, journal: journal, notifications: notifications)
+            power: power, gateway: gateway, wifi: wifi, journal: journal,
+            notifications: notifications)
     }
 
     // MARK: - Пробы и подтверждение
@@ -168,6 +172,75 @@ struct MonitoringCoordinatorTests {
         await harness.coordinator.stop()
     }
 
+    /// Решение 5 design: слой питания живёт с координатором, а не с
+    /// детектором — пауза не должна его выключать.
+    @Test("Слой питания переживает паузу, но останавливается со stop()")
+    func powerLayerSurvivesPause() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        #expect(await harness.power.isStarted)
+
+        await harness.coordinator.pause()
+        #expect(await harness.power.isStarted)
+
+        await harness.coordinator.resume()
+        await harness.coordinator.stop()
+        #expect(await harness.power.isStarted == false)
+    }
+
+    @Test("Засыпание в реактивном режиме группы не трогает")
+    func reactiveSleepKeepsGroups() async {
+        let harness = makeHarness(groups: ["VPN down": true])
+        await harness.beacon.setFallback(.body(TestData.leakBody))
+        await harness.coordinator.runProbe(trigger: .scheduled)
+        #expect(await harness.coordinator.snapshot.state == .leak)
+        await harness.gateway.resetOperations()
+
+        await harness.coordinator.handleSystemWillSleep()
+
+        // Состояние и блок нетронуты: контракт «блок только при утечке»
+        #expect(await harness.coordinator.snapshot.state == .leak)
+        #expect(await harness.gateway.operations.isEmpty)
+        let facts = await harness.journal.events.compactMap { event -> String? in
+            guard event.trigger == .power, case .fact(let text) = event.kind else { return nil }
+            return text
+        }
+        #expect(facts.contains { $0.contains("засыпает") })
+    }
+
+    @Test("Пробуждение в реактивном режиме запускает пробу")
+    func reactiveWakeProbes() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+        let probesBefore = await harness.beacon.callCount
+
+        await harness.coordinator.handleSystemDidWake()
+
+        #expect(await harness.beacon.callCount == probesBefore + 1)
+        #expect(await harness.coordinator.snapshot.lastTrigger == .power)
+    }
+
+    @Test("Пробуждение через фейк-монитор доходит до пробы")
+    func wakeWiringDelivers() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        let probesBefore = await harness.beacon.callCount
+
+        await harness.power.simulateDidWake()
+
+        // Обработчик пробуждения запускается фоновой задачей — дожидаемся
+        // с ограничением, чтобы сломанная проводка валила тест, а не вешала
+        for _ in 0..<10_000 {
+            if await harness.beacon.callCount > probesBefore { break }
+            await Task.yield()
+        }
+        #expect(await harness.beacon.callCount == probesBefore + 1)
+        await harness.coordinator.stop()
+    }
+
     /// Регрессия: отложенные эффекты после stop() трогали группы LS.
     @Test("После stop() reconcile не трогает группы")
     func stopPreventsGroupChanges() async {
@@ -213,16 +286,100 @@ struct MonitoringCoordinatorTests {
         let harness = makeHarness(clock: clock)
         await harness.beacon.setFallback(.body(TestData.protectedBody))
 
-        let info = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
-        async let first: Void = harness.coordinator.handlePathChange(info)
-        async let second: Void = harness.coordinator.handlePathChange(info)
-        async let third: Void = harness.coordinator.handlePathChange(info)
+        // Сведения различаются: шквал не дедуплицируется, его гасит debounce
+        async let first: Void = harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi"))
+        async let second: Void = harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi + туннель"))
+        async let third: Void = harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi B"))
 
         await clock.waitForSleepers(3)
         await clock.advance(by: 1)
         _ = await (first, second, third)
 
         #expect(await harness.beacon.callCount == 1)
+    }
+
+    // MARK: - Дедупликация событий пути
+
+    @Test("Повтор события пути без смены сведений игнорируется целиком")
+    func duplicatePathEventIsIgnored() async {
+        let harness = makeHarness(directIPFallback: TestData.providerIP)
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+
+        let info = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
+        await harness.coordinator.handlePathChange(info)
+        #expect(await harness.coordinator.snapshot.directRuIP == TestData.providerIP)
+        let journalBefore = await harness.journal.events.count
+        let probesBefore = await harness.beacon.callCount
+        let ruBeaconBefore = await harness.directIP.callCount
+
+        await harness.coordinator.handlePathChange(info)
+
+        // Ни записи в журнал, ни пробы, ни сброса и перезапроса прямого РУ-IP
+        #expect(await harness.journal.events.count == journalBefore)
+        #expect(await harness.beacon.callCount == probesBefore)
+        #expect(await harness.directIP.callCount == ruBeaconBefore)
+        #expect(await harness.coordinator.snapshot.directRuIP == TestData.providerIP)
+    }
+
+    @Test("Возврат сети после пропажи не дедуплицируется")
+    func pathReturnAfterDownIsProcessed() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        let up = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
+
+        await harness.coordinator.handlePathChange(up)
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: false, interfaceDescription: "нет сети"))
+        #expect(await harness.coordinator.snapshot.state == .offline)
+
+        // Те же интерфейсы, но isSatisfied другой — событие обрабатывается
+        await harness.coordinator.handlePathChange(up)
+
+        #expect(await harness.coordinator.snapshot.state == .protected)
+    }
+
+    @Test("Первое событие пути после пробуждения обрабатывается без смены сведений")
+    func wakeResetsPathDeduplication() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+        let info = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
+        await harness.coordinator.handlePathChange(info)
+
+        await harness.coordinator.handleSystemDidWake()
+        await harness.coordinator.handlePathChange(info)
+
+        // За время сна сеть могла смениться на неотличимую — факт смены пути
+        // в журнале обязан появиться второй раз
+        let pathFacts = await harness.journal.events.compactMap { event -> String? in
+            guard case .fact(let text) = event.kind else { return nil }
+            return text.contains("сетевой путь изменился") ? text : nil
+        }
+        #expect(pathFacts.count == 2)
+    }
+
+    @Test("После паузы и возобновления идентичное событие пути обрабатывается")
+    func resumeResetsPathDeduplication() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        let info = NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi")
+        await harness.coordinator.handlePathChange(info)
+
+        await harness.coordinator.pause()
+        await harness.coordinator.resume()
+        await harness.coordinator.handlePathChange(info)
+
+        let pathFacts = await harness.journal.events.compactMap { event -> String? in
+            guard case .fact(let text) = event.kind else { return nil }
+            return text.contains("сетевой путь изменился") ? text : nil
+        }
+        #expect(pathFacts.count == 2)
+        await harness.coordinator.stop()
     }
 
     // MARK: - Отказ helper и эскалация
@@ -401,6 +558,7 @@ struct StrictCoordinatorTests {
         let beacon: FakeBeacon
         let path: FakePathMonitor
         let tripwire: FakeTripwire
+        let power: FakePowerMonitor
         let gateway: FakeRuleGroupGateway
         let wifi: FakeWifi
         let journal: FakeJournal
@@ -415,6 +573,7 @@ struct StrictCoordinatorTests {
         let beacon = FakeBeacon()
         let tripwire = FakeTripwire()
         let path = FakePathMonitor()
+        let power = FakePowerMonitor()
         let gateway = FakeRuleGroupGateway(groups: groups)
         let wifi = FakeWifi()
         let journal = FakeJournal()
@@ -424,11 +583,11 @@ struct StrictCoordinatorTests {
             coordinator: MonitoringCoordinator(
                 settingsProvider: { holder.settings }, beacon: beacon,
                 directIP: FakeDirectIP(), tripwire: tripwire, path: path,
-                gateway: gateway, wifi: wifi, journal: journal,
+                power: power, gateway: gateway, wifi: wifi, journal: journal,
                 notifications: notifications, clock: clock),
-            beacon: beacon, path: path, tripwire: tripwire, gateway: gateway,
-            wifi: wifi, journal: journal, notifications: notifications,
-            settings: holder)
+            beacon: beacon, path: path, tripwire: tripwire, power: power,
+            gateway: gateway, wifi: wifi, journal: journal,
+            notifications: notifications, settings: holder)
     }
 
     // MARK: - Старт и вердикты
@@ -706,6 +865,159 @@ struct StrictCoordinatorTests {
         await harness.coordinator.prepareForTermination()
 
         #expect(await harness.gateway.operations.isEmpty)
+    }
+
+    // MARK: - Сон и пробуждение
+
+    @Test("Засыпание закрывает группы до подтверждения сна")
+    func sleepCloses() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        #expect(await harness.gateway.groups["VPN down"] == false)
+
+        // Возврат simulateWillSleep == момент, когда боевой монитор отправил
+        // бы IOAllowPowerChange: к нему группы обязаны быть закрыты.
+        await harness.power.simulateWillSleep()
+
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        #expect(await harness.coordinator.snapshot.state == .checking)
+        let facts = await harness.journal.events.compactMap { event -> String? in
+            guard event.trigger == .power, case .fact(let text) = event.kind else { return nil }
+            return text
+        }
+        #expect(facts.contains { $0.contains("засыпает") })
+        let actions = await harness.journal.events.compactMap { event -> String? in
+            if case .action(let text) = event.kind { return text } else { return nil }
+        }
+        #expect(actions.contains { $0.contains("машина засыпает") })
+        await harness.coordinator.stop()
+    }
+
+    @Test("Засыпание на паузе закрывает: слой питания переживает паузу")
+    func sleepWhilePausedCloses() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        await harness.coordinator.pause()
+        #expect(await harness.power.isStarted)
+        await harness.gateway.resetOperations()
+
+        await harness.power.simulateWillSleep()
+
+        // Идемпотентная страховка: закрытие выполняется, Paused сохраняется
+        #expect(await harness.gateway.operations
+            == [RuleGroupOperation(name: "VPN down", enable: true)])
+        #expect(await harness.coordinator.snapshot.state == .paused)
+    }
+
+    @Test("observeOnly: засыпание не трогает группы, но пишет «закрыл бы»")
+    func sleepUnderObserveOnlyIsDryRun() async {
+        var settings = TestData.settings(mode: .strict)
+        settings.observeOnly = true
+        let harness = makeHarness(settings: settings)
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+
+        await harness.coordinator.handleSystemWillSleep()
+
+        #expect(await harness.gateway.operations.isEmpty)
+        let actions = await harness.journal.events.compactMap { event -> String? in
+            if case .action(let text) = event.kind { return text } else { return nil }
+        }
+        #expect(actions.contains { $0.contains("закрыл бы группы") })
+    }
+
+    @Test("Провал закрытия на сон: предупреждение, флаг helper, без эскалации")
+    func failedSleepCloseSetsHelperFlag() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+        await harness.gateway.failSet(with: .cliFailed("сбой CLI"))
+
+        await harness.coordinator.handleSystemWillSleep()
+
+        #expect(await harness.coordinator.snapshot.helperUnavailable)
+        #expect(await harness.wifi.turnedOffCount == 0)
+        #expect(await harness.coordinator.snapshot.groupsStateKnown == false)
+        let warnings = await harness.journal.events.compactMap { event -> String? in
+            if case .warning(let text) = event.kind { return text } else { return nil }
+        }
+        #expect(warnings.contains { $0.contains("не удалось закрыть при засыпании") })
+
+        // После пробуждения первый же вердикт досверяет группы (needsReconcile)
+        await harness.gateway.failSet(with: nil)
+        await harness.coordinator.handleSystemDidWake()
+        #expect(await harness.coordinator.snapshot.state == .protected)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+    }
+
+    @Test("Пробуждение: проба без события пути, открытие только по вердикту")
+    func wakeProbesWithoutPathEvent() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        await harness.coordinator.handleSystemWillSleep()
+        #expect(await harness.gateway.groups["VPN down"] == true)
+        let probesBefore = await harness.beacon.callCount
+
+        await harness.coordinator.handleSystemDidWake()
+
+        // Проба ушла по событию питания — никаких handlePathChange не было
+        #expect(await harness.beacon.callCount == probesBefore + 1)
+        #expect(await harness.coordinator.snapshot.lastTrigger == .power)
+        #expect(await harness.coordinator.snapshot.state == .protected)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+        await harness.coordinator.stop()
+    }
+
+    /// Живая приёмка 2026-08-02: в dark wake событие пути дало пробу с
+    /// вердиктом Protected, группы открылись — а уход из dark wake обратно
+    /// в сон системой не сообщается, и машина проспала 204 с открытой.
+    @Test("Dark wake: вердикт Protected не открывает группы до пробуждения")
+    func darkWakeVerdictKeepsClosed() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.start()
+        await harness.coordinator.handleSystemWillSleep()
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        // Dark wake: сеть шевелится, проба возвращает protected
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi"))
+
+        #expect(await harness.coordinator.snapshot.state == .checking)
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        // Полное пробуждение: проба открывает
+        await harness.coordinator.handleSystemDidWake()
+        #expect(await harness.coordinator.snapshot.state == .protected)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+        await harness.coordinator.stop()
+    }
+
+    @Test("Гонка: вердикт пробы, запущенной до засыпания, отбрасывается")
+    func staleVerdictAfterSleepIsDropped() async {
+        let harness = makeHarness()
+        await harness.beacon.setFallback(.body(TestData.protectedBody))
+        await harness.coordinator.runProbe(trigger: .startup)
+        #expect(await harness.gateway.groups["VPN down"] == false)
+
+        // Проба уходит и подвисает в полёте
+        await harness.beacon.holdNextFetch()
+        let inFlight = Task { await harness.coordinator.runProbe(trigger: .scheduled) }
+        while await !harness.beacon.isHolding { await Task.yield() }
+
+        // Засыпание: закрылись
+        await harness.coordinator.handleSystemWillSleep()
+        #expect(await harness.gateway.groups["VPN down"] == true)
+
+        // Проба возвращается с protected — но описывает прошлую сессию
+        await harness.beacon.release()
+        await inFlight.value
+
+        #expect(await harness.coordinator.snapshot.state == .checking)
+        #expect(await harness.gateway.groups["VPN down"] == true)
     }
 
     // MARK: - Переключение режима на лету

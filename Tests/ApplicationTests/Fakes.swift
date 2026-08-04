@@ -123,6 +123,37 @@ actor FakePathMonitor: PathMonitoring {
     }
 }
 
+actor FakePowerMonitor: PowerMonitoring {
+    private(set) var isStarted = false
+    private var onWillSleep: (@Sendable () async -> Void)?
+    private var onDidWake: (@Sendable () -> Void)?
+
+    init() {}
+
+    func start(onWillSleep: @escaping @Sendable () async -> Void,
+               onDidWake: @escaping @Sendable () -> Void) async {
+        isStarted = true
+        self.onWillSleep = onWillSleep
+        self.onDidWake = onDidWake
+    }
+
+    func stop() async {
+        isStarted = false
+        onWillSleep = nil
+        onDidWake = nil
+    }
+
+    /// Возвращается после завершения обработчика — как боевой монитор,
+    /// который подтверждает системе сон только по концу закрытия.
+    func simulateWillSleep() async {
+        await onWillSleep?()
+    }
+
+    func simulateDidWake() async {
+        onDidWake?()
+    }
+}
+
 actor FakeRuleGroupGateway: RuleGroupGateway {
     private(set) var groups: [String: Bool]
     private(set) var operations: [RuleGroupOperation] = []
