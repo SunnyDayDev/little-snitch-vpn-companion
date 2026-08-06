@@ -45,9 +45,12 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_APP_SANDBOX: NO
         # LaunchServices, Background Task Management и Notification Center
-        # кэшируют AppIcon по identity/version бандла. При обновлении ресурсов
-        # build number обязан меняться, иначе системные поверхности продолжают
-        # показывать старую иконку даже после переустановки приложения.
+        # кэшируют AppIcon по identity/version бандла: при неизменившемся build
+        # number системные поверхности показывают старую иконку даже после
+        # переустановки. Поэтому в релизе значение приходит override-ом из
+        # Scripts/release.sh — числом коммитов, которое растёт само. Здесь лежит
+        # значение для локальных сборок: правя иконку в Debug, сбрасывать
+        # системный кэш придётся руками.
         CURRENT_PROJECT_VERSION: 6
         MARKETING_VERSION: "1.0"
     dependencies:
@@ -138,7 +141,11 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Helper/Info.plist
         CREATE_INFOPLIST_SECTION_IN_BINARY: YES
-        CURRENT_PROJECT_VERSION: 1
+        # Как и у приложения — дефолт для локальных сборок, в релизе приходит
+        # override-ом из Scripts/release.sh. Число то же самое: helper едет
+        # внутри бандла, и разные версии у него и у приложения означали бы
+        # только то, что одно из значений забыли обновить.
+        CURRENT_PROJECT_VERSION: 6
         MARKETING_VERSION: "1.0"
 
   DomainTests:
