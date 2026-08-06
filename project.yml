@@ -80,12 +80,17 @@ targets:
         script: |
           set -euo pipefail
           # ictool требует саму macOS 26: под macOS 15 он падает с Abort trap
-          # даже при выбранном Xcode 26. Тесты в CI собирают Debug, и там иконка
-          # роли не играет — ограничиваемся Release, чтобы нижняя граница
-          # поддерживаемого диапазона не краснела на генерации ресурса.
-          # В Release путь остаётся строгим: сбой ictool валит сборку.
-          if [ "${CONFIGURATION}" != "Release" ]; then
-            echo "note: полный AppIcon.icns собирается только в Release (сейчас ${CONFIGURATION})"
+          # даже при выбранном Xcode 26. Условие — «macOS 26+ либо не Release»:
+          # на свежей ОС дорисовываем всегда, на старой Release падает явно,
+          # а не отдаёт молча урезанный ICNS. Debug на старой ОС пропускаем —
+          # иконка там роли не играет.
+          MACOS_MAJOR="$(/usr/bin/sw_vers -productVersion | /usr/bin/cut -d. -f1)"
+          if [ "${MACOS_MAJOR}" -lt 26 ]; then
+            if [ "${CONFIGURATION}" = "Release" ]; then
+              echo "error: полный AppIcon.icns требует macOS 26+, хост — macOS ${MACOS_MAJOR}"
+              exit 1
+            fi
+            echo "note: пропускаю полный AppIcon.icns — нужна macOS 26+, хост macOS ${MACOS_MAJOR}"
             exit 0
           fi
           RESOURCES_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
@@ -199,6 +204,28 @@ schemes:
         LittleSnitchVPNCompanion: all
     run:
       config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - DomainTests
+        - ApplicationTests
+        - HelperTests
+        - InfrastructureTests
+
+  # Тесты без app-таргета. Компиляция App/AppIcon.icon требует рантайма
+  # macOS 26: на macOS 15 actool падает с IBPlatformToolFailureException
+  # («AssetCatalogAgent-AssetRuntime»), и весь билд краснеет ещё до тестов.
+  # Тестовые бандлы берут исходники Domain/Application/Infrastructure/Helper
+  # напрямую и ассет-каталог не трогают, поэтому нижнюю границу
+  # поддерживаемого диапазона проверяем этой схемой.
+  Tests:
+    build:
+      targets:
+        DomainTests: [test]
+        ApplicationTests: [test]
+        HelperTests: [test]
+        InfrastructureTests: [test]
     test:
       config: Debug
       gatherCoverageData: false
