@@ -44,7 +44,11 @@ targets:
         INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 sunnyday.dev"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_APP_SANDBOX: NO
-        CURRENT_PROJECT_VERSION: 1
+        # LaunchServices, Background Task Management и Notification Center
+        # кэшируют AppIcon по identity/version бандла. При обновлении ресурсов
+        # build number обязан меняться, иначе системные поверхности продолжают
+        # показывать старую иконку даже после переустановки приложения.
+        CURRENT_PROJECT_VERSION: 6
         MARKETING_VERSION: "1.0"
     dependencies:
       - target: Helper
@@ -68,6 +72,41 @@ targets:
         outputFiles:
           - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/dev.sunnyday.lsvpncompanion.helper
           - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons/dev.sunnyday.lsvpncompanion.helper.plist
+      - name: Generate complete legacy AppIcon.icns
+        # Icon Composer — единственный источник иконки. Сгенерированный Xcode
+        # fallback AppIcon.icns содержит лишь часть размеров. До подписи бандла
+        # дорисовываем недостающие rendition-ы штатным ictool и дополняем ICNS.
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          RESOURCES_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+          TEMP_DIR="$(mktemp -d "${DERIVED_FILE_DIR}/AppIcon.XXXXXX")"
+          trap '/bin/rm -rf "${TEMP_DIR}"' EXIT
+          ICONSET_DIR="${TEMP_DIR}/AppIcon.iconset"
+          ICON_DOCUMENT="${SRCROOT}/App/AppIcon.icon"
+          ICTOOL="${DEVELOPER_DIR}/../Applications/Icon Composer.app/Contents/Executables/ictool"
+          mkdir -p "${ICONSET_DIR}"
+          render() {
+            OUTPUT_FILE="${ICONSET_DIR}/$1"
+            "${ICTOOL}" "${ICON_DOCUMENT}" --export-image \
+              --output-file "${OUTPUT_FILE}" --platform macOS \
+              --rendition Default --width "$2" --height "$2" --scale "$3"
+            /usr/bin/sips -m "/System/Library/ColorSync/Profiles/sRGB Profile.icc" \
+              "${OUTPUT_FILE}" --out "${OUTPUT_FILE}" >/dev/null
+          }
+          render icon_32x32.png 32 1
+          render icon_32x32@2x.png 32 2
+          render icon_256x256.png 256 1
+          render icon_256x256@2x.png 256 2
+          render icon_512x512.png 512 1
+          render icon_512x512@2x.png 512 2
+          /usr/bin/python3 "${SRCROOT}/Scripts/pack_icns.py" \
+            "${ICONSET_DIR}" "${RESOURCES_DIR}/AppIcon.icns" \
+            "${RESOURCES_DIR}/AppIcon.icns"
+        inputFiles:
+          - $(SRCROOT)/App/AppIcon.icon/icon.json
+          - $(SRCROOT)/App/AppIcon.icon/Assets/Foreground.png
+          - $(SRCROOT)/Scripts/pack_icns.py
 
   Helper:
     type: tool

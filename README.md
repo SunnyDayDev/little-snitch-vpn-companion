@@ -3,7 +3,7 @@
 [![CI](https://github.com/SunnyDayDev/little-snitch-vpn-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/SunnyDayDev/little-snitch-vpn-companion/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SunnyDayDev/little-snitch-vpn-companion?display_name=tag)](https://github.com/SunnyDayDev/little-snitch-vpn-companion/releases/latest)
 
-<img src="App/Assets.xcassets/AppIcon.appiconset/icon_128.png" align="right" width="110" alt="Иконка приложения">
+<img src="design/app-icon-vpn-companion.png" align="right" width="110" alt="Иконка приложения">
 
 Меню-бар-приложение для macOS, которое следит за **фактическим egress-IP** машины и в
 момент, когда трафик пошёл мимо VPN, включает запрещающие rule groups в
