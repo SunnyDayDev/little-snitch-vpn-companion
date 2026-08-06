@@ -30,6 +30,8 @@ actor FakeBeacon: BeaconProbing {
     private(set) var callCount = 0
     private var holdNext = false
     private var held: CheckedContinuation<Void, Never>?
+    private var callObservers: [AsyncStream<Int>.Continuation] = []
+    private var holdObservers: [AsyncStream<Void>.Continuation] = []
 
     init() {}
 
@@ -45,18 +47,36 @@ actor FakeBeacon: BeaconProbing {
     /// «проба против пропажи сети».
     func holdNextFetch() { holdNext = true }
 
-    var isHolding: Bool { held != nil }
-
     func release() {
         held?.resume()
         held = nil
     }
 
+    /// Поток «ушла проба» (значение — её номер). Подписка оформляется ДО
+    /// действия, а результат ждётся через `firstEvent(from:)`: события после
+    /// подписки буферизуются и не теряются, а пробы до неё цикл не закрывают.
+    func callEvents() -> AsyncStream<Int> {
+        let (stream, continuation) = AsyncStream.makeStream(of: Int.self)
+        callObservers.append(continuation)
+        return stream
+    }
+
+    /// Поток «подвешенная проба фактически встала в полёте».
+    func holdEvents() -> AsyncStream<Void> {
+        let (stream, continuation) = AsyncStream.makeStream(of: Void.self)
+        holdObservers.append(continuation)
+        return stream
+    }
+
     func fetchTrace(timeout: Double) async -> BeaconFetch {
         callCount += 1
+        for observer in callObservers { observer.yield(callCount) }
         if holdNext {
             holdNext = false
-            await withCheckedContinuation { held = $0 }
+            await withCheckedContinuation { continuation in
+                held = continuation
+                for observer in holdObservers { observer.yield(()) }
+            }
         }
         return queued.isEmpty ? fallback : queued.removeFirst()
     }
@@ -259,6 +279,7 @@ actor ManualClock: Clock {
 
     private(set) var current: Instant
     private var waiters: [Waiter] = []
+    private var sleeperObservers: [AsyncStream<Int>.Continuation] = []
 
     init(start: Double = 0) {
         current = Instant(secondsSinceEpoch: start)
@@ -272,6 +293,7 @@ actor ManualClock: Clock {
         let deadline = current.secondsSinceEpoch + seconds
         await withCheckedContinuation { continuation in
             waiters.append(Waiter(deadline: deadline, continuation: continuation))
+            for observer in sleeperObservers { observer.yield(waiters.count) }
         }
     }
 
@@ -282,11 +304,14 @@ actor ManualClock: Clock {
         for waiter in due { waiter.continuation.resume() }
     }
 
-    /// Ждёт, пока в часах не окажется нужное число спящих.
+    /// Ждёт, пока в часах не окажется нужное число спящих — по событию, а не
+    /// опросом: `sleep` уведомляет подписчиков в момент постановки спящего.
     func waitForSleepers(_ count: Int) async {
-        while waiters.count < count {
-            await Task.yield()
-        }
+        guard waiters.count < count else { return }
+        let (stream, continuation) = AsyncStream.makeStream(of: Int.self)
+        sleeperObservers.append(continuation)
+        defer { continuation.finish() }
+        for await sleepers in stream where sleepers >= count { break }
     }
 }
 

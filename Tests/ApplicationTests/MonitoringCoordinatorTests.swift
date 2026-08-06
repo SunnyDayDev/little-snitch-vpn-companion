@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @Suite("MonitoringCoordinator")
@@ -228,15 +229,16 @@ struct MonitoringCoordinatorTests {
         await harness.beacon.setFallback(.body(TestData.protectedBody))
         await harness.coordinator.start()
         let probesBefore = await harness.beacon.callCount
+        // Подписка ДО пробуждения: в поток попадут только пробы после неё,
+        // поэтому стартовая проба ожидание не закроет.
+        let probes = await harness.beacon.callEvents()
 
         await harness.power.simulateDidWake()
 
-        // Обработчик пробуждения запускается фоновой задачей — дожидаемся
-        // с ограничением, чтобы сломанная проводка валила тест, а не вешала
-        for _ in 0..<10_000 {
-            if await harness.beacon.callCount > probesBefore { break }
-            await Task.yield()
-        }
+        // Обработчик пробуждения запускается фоновой задачей: ждём событие
+        // пробы, а не опрашиваем счётчик — сторож внутри валит тест, если
+        // проводка порвана.
+        #expect(await firstEvent(from: probes) != nil, "проба пробуждения не дошла")
         #expect(await harness.beacon.callCount == probesBefore + 1)
         await harness.coordinator.stop()
     }
@@ -533,20 +535,24 @@ struct MonitoringCoordinatorTests {
         await harness.beacon.setFallback(.body(TestData.protectedBody))
 
         let box = SnapshotBox()
-        _ = await harness.coordinator.observe { snapshot in
-            Task { await box.record(snapshot.state) }
-        }
+        _ = await harness.coordinator.observe { snapshot in box.record(snapshot.state) }
         await harness.coordinator.runProbe(trigger: .startup)
-        // Даём хвостовым Task'ам наблюдателя завершиться
-        await Task.yield()
 
-        #expect(await box.states.contains(.protected))
+        #expect(box.states.contains(.protected))
     }
 }
 
-private actor SnapshotBox {
-    private(set) var states: [EgressState] = []
-    func record(_ state: EgressState) { states.append(state) }
+/// Запись синхронно под замком, а не хвостовым `Task`: планирование такой
+/// задачи тесту не подконтрольно, и её пришлось бы дожидаться опросом.
+private final class SnapshotBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [EgressState] = []
+
+    var states: [EgressState] { lock.withLock { recorded } }
+
+    func record(_ state: EgressState) {
+        lock.withLock { recorded.append(state) }
+    }
 }
 
 /// Строгий режим: «группы выключены ⇔ последний вердикт Protected и мониторинг
@@ -658,8 +664,9 @@ struct StrictCoordinatorTests {
 
         // Проба уходит и подвисает в полёте
         await harness.beacon.holdNextFetch()
+        let holds = await harness.beacon.holdEvents()
         let inFlight = Task { await harness.coordinator.runProbe(trigger: .scheduled) }
-        while await !harness.beacon.isHolding { await Task.yield() }
+        #expect(await firstEvent(from: holds) != nil, "проба не встала в полёте")
 
         // Сеть пропала: закрылись
         await harness.coordinator.handlePathChange(
@@ -684,8 +691,9 @@ struct StrictCoordinatorTests {
         // Плановая проба висит в полёте в сети A; она вернёт protected,
         // но решать должна только свежая проба сети B
         await harness.beacon.holdNextFetch()
+        let holds = await harness.beacon.holdEvents()
         let inFlight = Task { await harness.coordinator.runProbe(trigger: .scheduled) }
-        while await !harness.beacon.isHolding { await Task.yield() }
+        #expect(await firstEvent(from: holds) != nil, "проба не встала в полёте")
 
         // Переключились на сеть B: остаёмся открытыми (мягкая проверка),
         // свежая проба уйдёт после debounce
@@ -744,7 +752,9 @@ struct StrictCoordinatorTests {
         await harness.gateway.failSet(with: nil)
         await clock.waitForSleepers(1)
         await clock.advance(by: 20)
-        while await !(harness.coordinator.snapshot.groupsStateKnown) { await Task.yield() }
+        // Ретрай работает фоновой задачей: ждём publish снимка, а не опрос.
+        #expect(await waitForSnapshot(harness.coordinator) { $0.groupsStateKnown },
+                "ретрай так и не закрыл группы")
         #expect(await harness.gateway.groups["VPN down"] == true)
     }
 
@@ -1005,8 +1015,9 @@ struct StrictCoordinatorTests {
 
         // Проба уходит и подвисает в полёте
         await harness.beacon.holdNextFetch()
+        let holds = await harness.beacon.holdEvents()
         let inFlight = Task { await harness.coordinator.runProbe(trigger: .scheduled) }
-        while await !harness.beacon.isHolding { await Task.yield() }
+        #expect(await firstEvent(from: holds) != nil, "проба не встала в полёте")
 
         // Засыпание: закрылись
         await harness.coordinator.handleSystemWillSleep()
