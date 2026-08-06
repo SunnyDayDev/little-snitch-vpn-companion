@@ -77,7 +77,19 @@ IDENTITY=$(awk -F= '/^CODE_SIGN_IDENTITY[[:space:]]*=/ {
 security find-identity -v -p codesigning 2>/dev/null | grep -qF "\"$IDENTITY\"" \
     || fail "сертификата «$IDENTITY» нет в связке ключей — см. инструкцию в Signing.xcconfig"
 
-echo "Релиз $TAG из $HEAD_SHA, подпись «$IDENTITY»"
+# Build number обязан меняться от релиза к релизу: LaunchServices, Background Task
+# Management и Notification Center кэшируют ресурсы бандла (прежде всего иконку) по
+# его версии, и при неизменившемся CFBundleVersion продолжают показывать старое даже
+# после переустановки. Ручной бамп в project.yml для этого не годится — о нём нечему
+# напомнить, и один пропуск выпускает релиз, у которого иконка не обновится.
+#
+# Число коммитов подходит лучше даты или счётчика в репозитории: оно растёт само,
+# выводится из тега кем угодно и когда угодно и не требует правки файла в момент
+# сборки — грязное дерево скрипт всё равно не пропустит. Монотонность держится на
+# том, что история `main` только прирастает; переписывание истории её сломает.
+BUILD_NUMBER=$(git rev-list --count HEAD)
+
+echo "Релиз $TAG (build $BUILD_NUMBER) из $HEAD_SHA, подпись «$IDENTITY»"
 
 # --- Сборка
 
@@ -89,6 +101,7 @@ xcodebuild -project LittleSnitchVPNCompanion.xcodeproj \
     -scheme LittleSnitchVPNCompanion -configuration Release \
     -derivedDataPath build/DerivedData \
     MARKETING_VERSION="$VERSION" \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     clean build >/dev/null
 
 BUILT="build/DerivedData/Build/Products/Release/$APP_NAME"
@@ -125,6 +138,13 @@ check_universal "$BUILT/Contents/MacOS/$HELPER_NAME" "бинаре helper"
 BUILT_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$BUILT/Contents/Info.plist")
 [ "$BUILT_VERSION" = "$VERSION" ] \
     || fail "в Info.plist версия $BUILT_VERSION, а релиз $VERSION — MARKETING_VERSION не подхватился"
+
+# Проверяется отдельно от версии: значение из project.yml подставится молча, и
+# релиз уедет с build number прошлой сборки — ровно тем, из-за которого система
+# и покажет закэшированную иконку.
+BUILT_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$BUILT/Contents/Info.plist")
+[ "$BUILT_BUILD" = "$BUILD_NUMBER" ] \
+    || fail "в Info.plist build number $BUILT_BUILD, а ожидался $BUILD_NUMBER — CURRENT_PROJECT_VERSION не подхватился"
 
 # --- Упаковка и публикация
 
