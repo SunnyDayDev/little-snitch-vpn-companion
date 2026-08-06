@@ -1,5 +1,5 @@
 {
-  "version": "2.14",
+  "version": "2.15",
   "children": [
     {
       "type": "frame",
@@ -10676,100 +10676,16 @@
                       "type": "frame",
                       "id": "xENND",
                       "name": "128px",
+                      "clip": true,
                       "width": 128,
                       "height": 128,
-                      "layout": "none",
-                      "children": [
-                        {
-                          "type": "rectangle",
-                          "cornerRadius": 23.125,
-                          "id": "ug1Ro",
-                          "x": 12.5,
-                          "y": 12.5,
-                          "name": "Тело",
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 315,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#63BCF7",
-                                "position": 0
-                              },
-                              {
-                                "color": "#2E7FE0",
-                                "position": 0.55
-                              },
-                              {
-                                "color": "#1B54BE",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "width": 103,
-                          "height": 103
-                        },
-                        {
-                          "type": "path",
-                          "id": "gV6sq",
-                          "x": 0,
-                          "y": 0,
-                          "name": "Разметка",
-                          "geometry": "M868 512l24 0-1.2 29.8-23.9-1.9z m-5.4 61.8l23.6 4.2-6.3 29.1-23.2-6z m-16.1 60l22.6 8.2-11.3 27.6-21.9-10z m-26.2 56.2l20.8 12-15.9 25.2-19.8-13.6z m-35.6 50.8l18.4 15.5-20.1 22-17.1-16.8z m-43.9 43.9l15.5 18.4-23.6 18.3-14-19.6z m-50.8 35.6l12 20.8-26.4 13.9-10.3-21.7z m-56.2 26.2l8.2 22.6-28.4 9.1-6.5-23.1z m-60 16.1l4.2 23.6-29.6 4.1-2.3-23.9z m-61.8 5.4l0 24-29.8-1.2 1.9-23.9z m-61.8-5.4l-4.2 23.6-29.1-6.3 6-23.2z m-60-16.1l-8.2 22.6-27.6-11.3 10-21.9z m-56.2-26.2l-12 20.8-25.2-15.9 13.6-19.8z m-50.8-35.6l-15.5 18.4-22-20.1 16.8-17.1z m-43.9-43.9l-18.4 15.5-18.3-23.6 19.6-14z m-35.6-50.8l-20.8 12-13.9-26.4 21.7-10.3z m-26.2-56.2l-22.6 8.2-9.1-28.4 23.1-6.5z m-16.1-60l-23.6 4.2-4.1-29.6 23.9-2.3z m-5.4-61.8l-24 0 1.2-29.8 23.9 1.9z m5.4-61.8l-23.6-4.2 6.3-29.1 23.2 6z m16.1-60l-22.6-8.2 11.3-27.6 21.9 10z m26.2-56.2l-20.8-12 15.9-25.2 19.8 13.6z m35.6-50.8l-18.4-15.5 20.1-22 17.1 16.8z m43.9-43.9l-15.5-18.4 23.6-18.3 14 19.6z m50.8-35.6l-12-20.8 26.4-13.9 10.3 21.7z m56.2-26.2l-8.2-22.6 28.4-9.1 6.5 23.1z m60-16.1l-4.2-23.6 29.6-4.1 2.3 23.9z m61.8-5.4l0-24 29.8 1.2-1.9 23.9z m61.8 5.4l4.2-23.6 29.1 6.3-6 23.2z m60 16.1l8.2-22.6 27.6 11.3-10 21.9z m56.2 26.2l12-20.8 25.2 15.9-13.6 19.8z m50.8 35.6l15.5-18.4 22 20.1-16.8 17.1z m43.9 43.9l18.4-15.5 18.3 23.6-19.6 14z m35.6 50.8l20.8-12 13.9 26.4-21.7 10.3z m26.2 56.2l22.6-8.2 9.1 28.4-23.1 6.5z m16.1 60l23.6-4.2 4.1 29.6-23.9 2.3z m-628.1-7.4l-67.9-16.9 5.7-20.4 66.8 21z m11.4-35.6l-65.1-25.7 8.3-19.4 63.5 29.5z m16-33.9l-61.3-33.9 10.8-18.2 59.1 37.6z m20.2-31.4l-56.3-41.7 13.1-16.6 53.7 44.9z m24.2-28.6l-50.4-48.6 15.1-14.8 47.4 51.6z m27.7-25.1l-43.6-54.8 16.9-12.7 40.2 57.3z m30.7-21.3l-36.1-60.1 18.5-10.3 32.4 62z m33.3-17.2l-28-64.2 19.7-7.8 24 65.7z m35.2-12.6l-19.3-67.3 20.4-5.2 15.3 68.3z m36.5-8l-10.3-69.2 21-2.5 6.2 69.7z m319.8 352.1l67.9 16.9-5.7 20.4-66.8-21z m-11.4 35.6l65.1 25.7-8.3 19.4-63.5-29.5z m-16 33.9l61.3 33.9-10.8 18.2-59.1-37.6z m-20.2 31.4l56.3 41.7-13.1 16.6-53.7-44.9z m-24.2 28.6l50.4 48.6-15.1 14.8-47.4-51.6z m-27.7 25.1l43.6 54.8-16.9 12.7-40.2-57.3z m-30.7 21.3l36.1 60.1-18.5 10.3-32.4-62z m-33.3 17.2l28 64.2-19.7 7.8-24-65.7z m-35.2 12.6l19.3 67.3-20.4 5.2-15.3-68.3z m-36.5 8l10.3 69.2-21 2.5-6.2-69.7z",
-                          "viewBox": [
-                            0,
-                            0,
-                            1024,
-                            1024
-                          ],
-                          "fill": "#FFFFFF",
-                          "width": 128,
-                          "height": 128
-                        },
-                        {
-                          "type": "path",
-                          "id": "WnCxv",
-                          "x": 0,
-                          "y": 0,
-                          "name": "Щит",
-                          "geometry": "M512 178c68 68 160 96 236 96 0 234-56 408-220 548-10 8-22 8-32 0-164-140-220-314-220-548 76 0 168-28 236-96z",
-                          "viewBox": [
-                            0,
-                            0,
-                            1024,
-                            1024
-                          ],
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 300,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#FFE77A",
-                                "position": 0
-                              },
-                              {
-                                "color": "#FFC93C",
-                                "position": 0.45
-                              },
-                              {
-                                "color": "#F0921E",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "width": 128,
-                          "height": 128
-                        }
-                      ]
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "app-icon-vpn-companion.png",
+                        "mode": "fit"
+                      },
+                      "layout": "none"
                     }
                   ]
                 },
@@ -10806,83 +10722,16 @@
                       "type": "frame",
                       "id": "urdkf",
                       "name": "64px",
+                      "clip": true,
                       "width": 64,
                       "height": 64,
-                      "layout": "none",
-                      "children": [
-                        {
-                          "type": "rectangle",
-                          "cornerRadius": 11.5625,
-                          "id": "zNzss",
-                          "x": 6.25,
-                          "y": 6.25,
-                          "name": "Тело",
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 315,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#63BCF7",
-                                "position": 0
-                              },
-                              {
-                                "color": "#2E7FE0",
-                                "position": 0.55
-                              },
-                              {
-                                "color": "#1B54BE",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "width": 51.5,
-                          "height": 51.5
-                        },
-                        {
-                          "type": "path",
-                          "id": "TNI4a",
-                          "x": 0,
-                          "y": 0,
-                          "name": "Щит",
-                          "geometry": "M512 200c66 64 156 92 230 92 0 224-54 390-214 520-10 8-22 8-32 0-160-130-214-296-214-520 74 0 164-28 230-92z",
-                          "viewBox": [
-                            0,
-                            0,
-                            1024,
-                            1024
-                          ],
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 300,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#FFE77A",
-                                "position": 0
-                              },
-                              {
-                                "color": "#FFC93C",
-                                "position": 0.45
-                              },
-                              {
-                                "color": "#F0921E",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "width": 64,
-                          "height": 64
-                        }
-                      ]
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "app-icon-vpn-companion.png",
+                        "mode": "fit"
+                      },
+                      "layout": "none"
                     }
                   ]
                 },
@@ -10919,83 +10768,16 @@
                       "type": "frame",
                       "id": "BC5nn",
                       "name": "32px",
+                      "clip": true,
                       "width": 32,
                       "height": 32,
-                      "layout": "none",
-                      "children": [
-                        {
-                          "type": "rectangle",
-                          "cornerRadius": 5.78125,
-                          "id": "qWPiv",
-                          "x": 3.125,
-                          "y": 3.125,
-                          "name": "Тело",
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 315,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#63BCF7",
-                                "position": 0
-                              },
-                              {
-                                "color": "#2E7FE0",
-                                "position": 0.55
-                              },
-                              {
-                                "color": "#1B54BE",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "width": 25.75,
-                          "height": 25.75
-                        },
-                        {
-                          "type": "path",
-                          "id": "Szm30",
-                          "x": 0,
-                          "y": 0,
-                          "name": "Щит",
-                          "geometry": "M512 200c66 64 156 92 230 92 0 224-54 390-214 520-10 8-22 8-32 0-160-130-214-296-214-520 74 0 164-28 230-92z",
-                          "viewBox": [
-                            0,
-                            0,
-                            1024,
-                            1024
-                          ],
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 300,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#FFE77A",
-                                "position": 0
-                              },
-                              {
-                                "color": "#FFC93C",
-                                "position": 0.45
-                              },
-                              {
-                                "color": "#F0921E",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "width": 32,
-                          "height": 32
-                        }
-                      ]
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "app-icon-vpn-companion.png",
+                        "mode": "fit"
+                      },
+                      "layout": "none"
                     }
                   ]
                 },
@@ -11032,83 +10814,16 @@
                       "type": "frame",
                       "id": "qTOng",
                       "name": "16px",
+                      "clip": true,
                       "width": 16,
                       "height": 16,
-                      "layout": "none",
-                      "children": [
-                        {
-                          "type": "rectangle",
-                          "cornerRadius": 2.890625,
-                          "id": "y2ew7",
-                          "x": 1.5625,
-                          "y": 1.5625,
-                          "name": "Тело",
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 315,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#63BCF7",
-                                "position": 0
-                              },
-                              {
-                                "color": "#2E7FE0",
-                                "position": 0.55
-                              },
-                              {
-                                "color": "#1B54BE",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "width": 12.875,
-                          "height": 12.875
-                        },
-                        {
-                          "type": "path",
-                          "id": "QwD24",
-                          "x": 0,
-                          "y": 0,
-                          "name": "Щит",
-                          "geometry": "M512 200c66 64 156 92 230 92 0 224-54 390-214 520-10 8-22 8-32 0-160-130-214-296-214-520 74 0 164-28 230-92z",
-                          "viewBox": [
-                            0,
-                            0,
-                            1024,
-                            1024
-                          ],
-                          "fill": {
-                            "type": "gradient",
-                            "gradientType": "linear",
-                            "enabled": true,
-                            "rotation": 300,
-                            "size": {
-                              "height": 1
-                            },
-                            "colors": [
-                              {
-                                "color": "#FFE77A",
-                                "position": 0
-                              },
-                              {
-                                "color": "#FFC93C",
-                                "position": 0.45
-                              },
-                              {
-                                "color": "#F0921E",
-                                "position": 1
-                              }
-                            ]
-                          },
-                          "width": 16,
-                          "height": 16
-                        }
-                      ]
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "app-icon-vpn-companion.png",
+                        "mode": "fit"
+                      },
+                      "layout": "none"
                     }
                   ]
                 },
@@ -11131,7 +10846,7 @@
           "id": "NqLFx",
           "name": "Заметка",
           "fill": "#8E8E93",
-          "content": "До 64 px — упрощённый мотив без разметки: тонкие штрихи на малом размере превращаются в грязь.",
+          "content": "Во всех размерах используется финальный двухлопастной ротор с центральным замком; на 32 и 16 px проверяется читаемость силуэта.",
           "fontFamily": "Inter",
           "fontSize": 9,
           "fontWeight": "normal"
