@@ -74,11 +74,16 @@ jobs:
       - name: Сгенерировать проект
         run: xcodegen generate
 
+      # Схема Tests, а не LittleSnitchVPNCompanion: app-таргет тянет компиляцию
+      # App/AppIcon.icon, а actool на macOS 15 падает с
+      # IBPlatformToolFailureException — сборка приложения требует macOS 26.
+      # Логика Domain/Application/Infrastructure/Helper от иконки не зависит,
+      # поэтому нижняя граница диапазона проверяется полностью.
       - name: Тесты
         run: >
           xcodebuild
           -project LittleSnitchVPNCompanion.xcodeproj
-          -scheme LittleSnitchVPNCompanion
+          -scheme Tests
           -configuration Debug
           -destination 'platform=macOS'
           CODE_SIGN_IDENTITY=-
