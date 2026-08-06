@@ -141,7 +141,11 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Helper/Info.plist
         CREATE_INFOPLIST_SECTION_IN_BINARY: YES
-        CURRENT_PROJECT_VERSION: 1
+        # Как и у приложения — дефолт для локальных сборок, в релизе приходит
+        # override-ом из Scripts/release.sh. Число то же самое: helper едет
+        # внутри бандла, и разные версии у него и у приложения означали бы
+        # только то, что одно из значений забыли обновить.
+        CURRENT_PROJECT_VERSION: 6
         MARKETING_VERSION: "1.0"
 
   DomainTests:
