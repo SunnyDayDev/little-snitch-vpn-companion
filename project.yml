@@ -79,6 +79,15 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
+          # ictool требует саму macOS 26: под macOS 15 он падает с Abort trap
+          # даже при выбранном Xcode 26. Тесты в CI собирают Debug, и там иконка
+          # роли не играет — ограничиваемся Release, чтобы нижняя граница
+          # поддерживаемого диапазона не краснела на генерации ресурса.
+          # В Release путь остаётся строгим: сбой ictool валит сборку.
+          if [ "${CONFIGURATION}" != "Release" ]; then
+            echo "note: полный AppIcon.icns собирается только в Release (сейчас ${CONFIGURATION})"
+            exit 0
+          fi
           RESOURCES_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
           TEMP_DIR="$(mktemp -d "${DERIVED_FILE_DIR}/AppIcon.XXXXXX")"
           trap '/bin/rm -rf "${TEMP_DIR}"' EXIT
