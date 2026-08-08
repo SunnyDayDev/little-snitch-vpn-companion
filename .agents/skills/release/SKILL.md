@@ -69,7 +69,7 @@ gh run list --commit "$(git rev-parse HEAD)" --json name,conclusion,status
 же виде, чтобы один набор изменений не получал разный вердикт в разные дни:
 
 ```bash
-./.claude/skills/release/scripts/collect-evidence.sh
+./.agents/skills/release/scripts/collect-evidence.sh
 ```
 
 Скрипт печатает: последний тег, коммиты после него, затронутые каталоги,
