@@ -18,3 +18,10 @@ LittleSnitchVPNCompanion.xcodeproj/
 
 # macOS
 .DS_Store
+
+# Локальный конфиг агентов: машинно-специфичный и в общий репозиторий не едет
+.claude/settings.local.json
+.claude/*.local.json
+.claude/worktrees/
+CLAUDE.local.md
+.codex-log/
