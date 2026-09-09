@@ -30,8 +30,8 @@
 
 ## 6. Проверка и живая приёмка
 
-- [ ] 6.1 `xcodegen generate && xcodebuild -project LittleSnitchVPNCompanion.xcodeproj -scheme LittleSnitchVPNCompanion -configuration Debug test` зелёный локально; `./Scripts/check-domain-purity.sh` зелёный; CI «Тесты (macOS 26)» и «Тесты (macOS 15)» зелёные на PR
+- [x] 6.1 `xcodegen generate && xcodebuild -project LittleSnitchVPNCompanion.xcodeproj -scheme LittleSnitchVPNCompanion -configuration Debug test` зелёный локально; `./Scripts/check-domain-purity.sh` зелёный; CI «Тесты (macOS 26)» и «Тесты (macOS 15)» зелёные на PR
 - [x] 6.2 Сборка установлена в `~/Applications`, helper переустановлен по подсказке приложения (не из DerivedData — ловушка BTM). Вкладка «Группы»: «Require VPN Services» показана с подписью «подписка», состояние совпадает с Little Snitch; в журнале «список групп из LS: 4 шт.»
 - [x] 6.3 Реактивный режим, подписка отмечена «включать при утечке»: имитация утечки отладочной настройкой `debugFakeEgressIP` → в журнале «группа «Require VPN Services» включена», записей «не найдена» нет, в Little Snitch группа активна; возврат к Protected → группа выключена
-- [ ] 6.4 Проверка допущения `customName`: переименовать подписку в Little Snitch → «Обновить список из LS» → строка под новым именем и `rulegroup -d "<новое имя>"` даёт код 0. Если имя не сменилось — снять `export-model`, найти фактический ключ, поправить цепочку п. 1.1 и фикстуру п. 1.5; вернуть подписке прежнее имя
-- [ ] 6.5 Убрать «Require VPN Services Local» из маппинга, если она была обходным путём (решение пользователя); после «Обновить список из LS» в журнале нет предупреждений об одноимённых группах
+- [x] 6.4 Проверка допущения `customName`: переименовать подписку в Little Snitch → «Обновить список из LS» → строка под новым именем и `rulegroup -d "<новое имя>"` даёт код 0. Если имя не сменилось — снять `export-model`, найти фактический ключ, поправить цепочку п. 1.1 и фикстуру п. 1.5; вернуть подписке прежнее имя
+- [x] 6.5 Убрать «Require VPN Services Local» из маппинга, если она была обходным путём (решение пользователя); после «Обновить список из LS» в журнале нет предупреждений об одноимённых группах
