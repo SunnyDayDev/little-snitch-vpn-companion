@@ -180,6 +180,9 @@ actor FakeRuleGroupGateway: RuleGroupGateway {
     private(set) var listCallCount = 0
     private var listError: RuleGroupGatewayError?
     private var setError: RuleGroupGatewayError?
+    /// Список «как есть» — с видом групп и повторами имён; словарь `groups`
+    /// такого выразить не может.
+    private var listOverride: [RuleGroup]?
 
     init(groups: [String: Bool] = [:]) {
         self.groups = groups
@@ -187,12 +190,14 @@ actor FakeRuleGroupGateway: RuleGroupGateway {
 
     func failList(with error: RuleGroupGatewayError?) { listError = error }
     func failSet(with error: RuleGroupGatewayError?) { setError = error }
+    func setList(_ list: [RuleGroup]) { listOverride = list }
 
     func helperVersion() async throws -> String { "1.0" }
 
     func listRuleGroups() async throws -> [RuleGroup] {
         listCallCount += 1
         if let listError { throw listError }
+        if let listOverride { return listOverride }
         return groups.map { RuleGroup(name: $0.key, enabled: $0.value) }
             .sorted { $0.name < $1.name }
     }

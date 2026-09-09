@@ -29,6 +29,7 @@ struct DSRuleGroupRow: View {
 
 private struct DSRuleGroupRowPreviewContent: View {
     @State private var vpnDown = true
+    @State private var subscription = true
     @State private var other = false
 
     var body: some View {
@@ -37,6 +38,11 @@ private struct DSRuleGroupRowPreviewContent: View {
                 name: "VPN down",
                 subtitle: "3 правила · deny",
                 isOn: $vpnDown
+            )
+            DSRuleGroupRow(
+                name: "Require VPN Services",
+                subtitle: "подписка · выключена в LS",
+                isOn: $subscription
             )
             DSRuleGroupRow(name: "Torrents", isOn: $other)
         }

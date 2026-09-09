@@ -1,12 +1,27 @@
-/// Rule group Little Snitch: имя и фактическое состояние. Приложение никогда
-/// не меняет правила внутри группы — только включает и выключает группу.
+/// Вид rule group Little Snitch. Влияет только на подпись во вкладке
+/// «Группы»: включается и выключается любая группа одинаково — по имени.
+enum RuleGroupKind: String, Hashable, Codable {
+    /// Встроенная группа Little Snitch («macOS Services», «iCloud Services»).
+    case builtin
+    /// Локальная группа, созданная пользователем.
+    case local
+    /// Подписка по URL: правила приходят из `.lsrules` на сервере.
+    case remote
+}
+
+/// Rule group Little Snitch: имя, фактическое состояние и вид. Приложение
+/// никогда не меняет правила внутри группы — только включает и выключает группу.
 struct RuleGroup: Hashable, Codable {
     let name: String
     let enabled: Bool
+    /// `nil` — helper вид не сообщил: старая версия демона или запасной разбор
+    /// модели, который о видах не знает.
+    let kind: RuleGroupKind?
 
-    init(name: String, enabled: Bool) {
+    init(name: String, enabled: Bool, kind: RuleGroupKind? = nil) {
         self.name = name
         self.enabled = enabled
+        self.kind = kind
     }
 }
 

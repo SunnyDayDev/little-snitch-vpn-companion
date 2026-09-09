@@ -356,7 +356,7 @@ private struct RuleGroupsTab: View {
                     ForEach(Array(model.ruleGroups.enumerated()), id: \.element.name) { index, group in
                         if index > 0 { DSSeparator() }
                         DSRuleGroupRow(name: group.name,
-                                       subtitle: group.enabled ? "включена в LS" : "выключена в LS",
+                                       subtitle: Self.subtitle(for: group),
                                        isOn: binding(for: group.name))
                             .padding(.horizontal, DSMetrics.Table.horizontalPadding)
                             .padding(.vertical, DSMetrics.Table.rowVerticalPadding)
@@ -420,6 +420,13 @@ private struct RuleGroupsTab: View {
     private func binding(for name: String) -> Binding<Bool> {
         Binding(get: { model.settings.leakGroups.contains(name) },
                 set: { model.toggleLeakGroup(name, isOn: $0) })
+    }
+
+    /// Подписка помечается словом: одноимённая локальная копия и подписка
+    /// иначе неотличимы, а включаются они по одному и тому же имени.
+    private static func subtitle(for group: RuleGroup) -> String {
+        let state = group.enabled ? "включена в LS" : "выключена в LS"
+        return group.kind == .remote ? "подписка · \(state)" : state
     }
 }
 
