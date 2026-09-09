@@ -104,4 +104,51 @@ struct SyncRuleGroupsTests {
         #expect(outcome == .failed(.unparsableModel("bad json")))
         #expect(await journal.events.count == 1)
     }
+
+    /// Одноимённые локальная и подписка: helper отдаёт обе, приложение
+    /// оставляет первую и предупреждает — при включении по имени различить
+    /// их нельзя.
+    @Test("Одноимённые группы схлопываются с предупреждением в журнал")
+    func collapsesSameNamedGroups() async {
+        let gateway = FakeRuleGroupGateway()
+        await gateway.setList([
+            RuleGroup(name: "VPN down", enabled: false, kind: .local),
+            RuleGroup(name: "VPN down", enabled: true, kind: .remote),
+            RuleGroup(name: "Блок рекламы", enabled: true, kind: .local),
+        ])
+        let journal = FakeJournal()
+        let outcome = await SyncRuleGroups(gateway: gateway, journal: journal,
+                                           clock: ImmediateClock()).run()
+        guard case .synced(let groups, _) = outcome else {
+            Issue.record("ожидался synced")
+            return
+        }
+        #expect(groups == [RuleGroup(name: "VPN down", enabled: false, kind: .local),
+                           RuleGroup(name: "Блок рекламы", enabled: true, kind: .local)])
+        let warnings = await journal.events.compactMap { event -> String? in
+            if case .warning(let text) = event.kind { return text }
+            return nil
+        }
+        #expect(warnings == ["одноимённые группы в Little Snitch: «VPN down» — "
+            + "включаются по имени, различить их нельзя"])
+    }
+
+    @Test("Без коллизий имён предупреждений нет")
+    func noWarningWithoutCollisions() async {
+        let gateway = FakeRuleGroupGateway()
+        await gateway.setList([RuleGroup(name: "VPN down", enabled: false, kind: .local),
+                               RuleGroup(name: "Require VPN Services", enabled: true,
+                                         kind: .remote)])
+        let journal = FakeJournal()
+        let outcome = await SyncRuleGroups(gateway: gateway, journal: journal,
+                                           clock: ImmediateClock()).run()
+        guard case .synced(let groups, _) = outcome else {
+            Issue.record("ожидался synced")
+            return
+        }
+        #expect(groups.count == 2)
+        let events = await journal.events
+        #expect(events.count == 1)
+        #expect(events.first?.kind.category == .fact)
+    }
 }

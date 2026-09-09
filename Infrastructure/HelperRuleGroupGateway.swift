@@ -28,8 +28,7 @@ actor HelperRuleGroupGateway: RuleGroupGateway, FailsafeSyncing {
                 }
             }
         }
-        let groups = try JSONDecoder().decode([HelperRuleGroup].self, from: data)
-        return groups.map { RuleGroup(name: $0.name, enabled: $0.enabled) }
+        return try HelperRuleGroupDecoding.decode(data)
     }
 
     func setRuleGroup(_ name: String, enabled: Bool) async throws {
@@ -195,7 +194,36 @@ private final class OneShotContinuationBox<T: Sendable>: @unchecked Sendable {
     }
 }
 
-private struct HelperRuleGroup: Codable {
-    let name: String
-    let enabled: Bool
+/// Разбор JSON-ответа `listRuleGroups`. Вынесен из актора, чтобы тесты
+/// проверяли терпимость к ответам без поля `kind` без живого XPC.
+enum HelperRuleGroupDecoding {
+    private struct Payload: Decodable {
+        let name: String
+        let enabled: Bool
+        /// Строкой, а не `HelperRuleGroupKind`: незнакомое значение от более
+        /// нового helper — не ошибка декодирования, а «вид неизвестен».
+        let kind: String?
+    }
+
+    static func decode(_ data: Data) throws -> [RuleGroup] {
+        try JSONDecoder().decode([Payload].self, from: data).map { payload in
+            RuleGroup(name: payload.name,
+                      enabled: payload.enabled,
+                      kind: payload.kind
+                          .flatMap(HelperRuleGroupKind.init(rawValue:))
+                          .map(RuleGroupKind.init(helperKind:)))
+        }
+    }
+}
+
+private extension RuleGroupKind {
+    /// Явное отображение контракта helper в домен: совпадение строк —
+    /// удобство, а не гарантия.
+    init(helperKind: HelperRuleGroupKind) {
+        switch helperKind {
+        case .builtin: self = .builtin
+        case .local: self = .local
+        case .remote: self = .remote
+        }
+    }
 }

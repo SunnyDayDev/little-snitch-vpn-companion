@@ -5,7 +5,7 @@ import Foundation
 /// форме объекта, а не по фиксированному пути в дереве: объект с текстовым
 /// именем и булевым признаком включённости.
 ///
-/// Наружу отдаются только имена и статусы — модель может быть большой.
+/// Наружу отдаются только имена, статусы и вид групп — модель может быть большой.
 enum RuleGroupModelParser {
     struct ParseFailure: Error, CustomStringConvertible {
         let topLevelKeys: [String]
@@ -25,9 +25,17 @@ enum RuleGroupModelParser {
         }
     }
 
-    /// `userProvidedName` — так имя группы называется в модели LS
-    /// (проверено на целевой машине 2026-07-30).
-    private static let nameKeys = ["userProvidedName", "name", "Name", "groupName", "title"]
+    /// Поля, в которых Little Snitch хранит имя группы, в порядке приоритета
+    /// (проверено на целевой машине 2026-09-09, LS 6.5):
+    ///
+    /// - `userProvidedName` — локальная группа;
+    /// - `customName` — подписка, переименованная пользователем. Допущение:
+    ///   в дампе ключ не встретился (подписка не была переименована), но
+    ///   свойство есть у класса группы в бинаре CLI;
+    /// - `factoryName` — подписка под именем из файла `.lsrules`.
+    private static let littleSnitchNameKeys = ["userProvidedName", "customName", "factoryName"]
+    /// Те же поля плюс общие имена — для запасного поиска по форме.
+    private static let nameKeys = littleSnitchNameKeys + ["name", "Name", "groupName", "title"]
     private static let enabledKeys = ["enabled", "isEnabled", "active", "isActive", "on"]
     private static let disabledKeys = ["disabled", "isDisabled", "inactive"]
     /// Состояние группы может быть и строкой: `"state": "enabled"`.
@@ -38,32 +46,46 @@ enum RuleGroupModelParser {
     private static let groupContainerKeys = ["groups", "ruleGroups", "localRuleGroups",
                                              "subscribedRuleGroups"]
 
-    /// Фактическая форма модели Little Snitch 6 (снято с целевой машины
-    /// 2026-07-30): `groups` — словарь «внутренний id → описание группы», где
+    /// Фактическая форма модели Little Snitch 6 (снимки с целевой машины
+    /// 2026-07-30 и 2026-09-09, LS 6.5): `groups` — словарь «внутренний id →
+    /// описание группы», где
     ///
-    /// - имя пользовательской группы лежит в `userProvidedName`;
+    /// - локальная группа: имя в `userProvidedName`. Её `type` нестабилен
+    ///   (в июле ключа не было, в сентябре — `loadedFromFile`), поэтому на
+    ///   него не опираемся;
+    /// - подписка по URL: `type: loadedFromURL`, имя из файла в `factoryName`,
+    ///   адрес в `loadFromURL`;
     /// - встроенная группа имени не имеет вовсе, её опознаёт `type`
     ///   (`builtinMacOSServices`, `builtinICloudServices`);
-    /// - `isActive` присутствует только у включённых групп: отсутствие ключа
-    ///   означает «выключена», а не «неизвестно».
-    private static func parseLittleSnitchGroups(_ root: Any) -> [String: Bool] {
+    /// - `isActive` присутствует только у включённых групп любого вида:
+    ///   отсутствие ключа означает «выключена», а не «неизвестно».
+    ///
+    /// Пропускается только запись без имени в любом виде: незнакомый `type`
+    /// сам по себе не повод прятать группу, у которой имя есть, — именно так
+    /// подписки и терялись. Одноимённые записи не схлопываются: разводит их
+    /// приложение, у которого есть журнал для предупреждения.
+    private static func parseLittleSnitchGroups(_ root: Any) -> [RuleGroupInfo] {
         guard let dictionary = root as? [String: Any],
-              let groups = dictionary["groups"] as? [String: Any] else { return [:] }
+              let groups = dictionary["groups"] as? [String: Any] else { return [] }
 
-        var result: [String: Bool] = [:]
-        for (id, value) in groups {
+        var result: [RuleGroupInfo] = []
+        for value in groups.values {
             guard let details = value as? [String: Any] else { continue }
-            let name = (details["userProvidedName"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                ?? (details["type"] as? String).flatMap(builtinGroupName)
+            let type = details["type"] as? String
+            let name = littleSnitchNameKeys.lazy
+                .compactMap { details[$0] as? String }
+                .first { !$0.isEmpty }
+                ?? type.flatMap(builtinGroupName)
             guard let name else {
-                // Группа без имени и с неизвестным типом: показывать её как
-                // внутренний идентификатор бессмысленно.
+                // Ни имени, ни известного встроенного типа: показывать такую
+                // запись как внутренний идентификатор бессмысленно.
                 continue
             }
-            result[name] = (details["isActive"] as? Bool) ?? false
-            _ = id
+            result.append(RuleGroupInfo(name: name,
+                                        enabled: (details["isActive"] as? Bool) ?? false,
+                                        kind: kind(ofType: type)))
         }
-        return result
+        return sorted(result)
     }
 
     /// Человекочитаемые имена встроенных групп — такими их показывает и
@@ -76,6 +98,38 @@ enum RuleGroupModelParser {
         }
     }
 
+    /// Вид — по `type`, но только для двух устойчивых значений; всё прочее с
+    /// именем считается локальной группой.
+    private static func kind(ofType type: String?) -> HelperRuleGroupKind {
+        switch type {
+        case let type? where type.hasPrefix("builtin"): .builtin
+        case "loadedFromURL": .remote
+        default: .local
+        }
+    }
+
+    /// Порядок детерминирован: по имени, при равных именах — по виду
+    /// (локальная, встроенная, подписка). Приложение, оставляя первую из
+    /// одноимённых, всегда оставляет одну и ту же.
+    private static func sorted(_ groups: [RuleGroupInfo]) -> [RuleGroupInfo] {
+        groups.sorted { lhs, rhs in
+            switch lhs.name.localizedStandardCompare(rhs.name) {
+            case .orderedAscending: true
+            case .orderedDescending: false
+            case .orderedSame: kindOrder(lhs.kind) < kindOrder(rhs.kind)
+            }
+        }
+    }
+
+    private static func kindOrder(_ kind: HelperRuleGroupKind?) -> Int {
+        switch kind {
+        case .local: 0
+        case .builtin: 1
+        case .remote: 2
+        case nil: 3
+        }
+    }
+
     static func parse(_ data: Data) throws -> [RuleGroupInfo] {
         let root = try JSONSerialization.jsonObject(with: data)
 
@@ -84,8 +138,6 @@ enum RuleGroupModelParser {
         let littleSnitchGroups = parseLittleSnitchGroups(root)
         if !littleSnitchGroups.isEmpty {
             return littleSnitchGroups
-                .map { RuleGroupInfo(name: $0.key, enabled: $0.value) }
-                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         }
 
         var found: [String: Bool] = [:]
@@ -105,9 +157,8 @@ enum RuleGroupModelParser {
             shapes.append(contentsOf: unnamed.sorted().prefix(4).map { "группа: " + $0 })
             throw ParseFailure(topLevelKeys: keys, candidateShapes: shapes)
         }
-        return found
-            .map { RuleGroupInfo(name: $0.key, enabled: $0.value) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        // Запасной поиск о видах групп ничего не знает — `kind` остаётся пустым.
+        return sorted(found.map { RuleGroupInfo(name: $0.key, enabled: $0.value) })
     }
 
     /// Ключ контейнера годится как имя группы, только если он выглядит именем,
@@ -226,8 +277,18 @@ enum RuleGroupModelParser {
     }
 }
 
-/// То, что helper отдаёт приложению по XPC: только имя и статус.
+/// То, что helper отдаёт приложению по XPC: имя, статус и вид группы.
+/// `kind` пуст, когда группу нашёл запасной поиск по форме: он о видах ничего
+/// не знает, а выдумывать «локальная» нельзя. При кодировании `nil` опускается —
+/// поле в JSON необязательное (см. `HelperProtocol.listRuleGroups`).
 struct RuleGroupInfo: Codable, Hashable {
     let name: String
     let enabled: Bool
+    let kind: HelperRuleGroupKind?
+
+    init(name: String, enabled: Bool, kind: HelperRuleGroupKind? = nil) {
+        self.name = name
+        self.enabled = enabled
+        self.kind = kind
+    }
 }

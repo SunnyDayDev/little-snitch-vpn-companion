@@ -358,22 +358,50 @@ Please enable access in Little Snitch.app > Preferences > Security.
 
 ### 3. Формат модели Little Snitch 6
 
-Структура `export-model` не документирована; снята с живой машины 2026-07-30 и
-закреплена тестами (`Tests/HelperTests/LittleSnitchModelTests.swift`):
+Структура `export-model` не документирована; снята с живой машины (2026-07-30 и
+2026-09-09, Little Snitch 6.5) и закреплена тестами
+(`Tests/HelperTests/LittleSnitchModelTests.swift`):
 
 ```json
 "groups": {
   "aaaaac": {"type": "builtinMacOSServices", "isActive": true},
   "aaaaad": {"type": "builtinICloudServices", "isActive": true},
-  "ghoGzc": {"userProvidedName": "Require VPN Services", "creationDate": "…"}
+  "ghoGzc": {"type": "loadedFromFile", "userProvidedName": "Require VPN Services Local",
+             "creationDate": "…"},
+  "pykpmH": {"type": "loadedFromURL", "factoryName": "Require VPN Services",
+             "loadFromURL": "https://example.com/require-vpn.lsrules",
+             "lastSuccessfulUpdate": "…", "updateInterval": 86400}
 }
 ```
 
-- имя пользовательской группы — в `userProvidedName`; у встроенных имени нет вовсе,
-  их опознаёт `type` (`builtinMacOSServices` → «macOS Services»);
-- `isActive` присутствует только у включённых групп: **отсутствие ключа означает
-  «выключена»**;
-- ключи словаря (`aaaaac`) — внутренние идентификаторы LS, наружу они не отдаются.
+- имя берётся по цепочке полей `userProvidedName` → `customName` → `factoryName`:
+  локальная группа хранит его в `userProvidedName`, подписка по URL
+  (`type: loadedFromURL`) — имя из файла `.lsrules` в `factoryName`, переименованная
+  пользователем подписка — в `customName` (допущение: в дампе ключ не встречался,
+  свойство есть в бинаре CLI). У встроенных имени нет вовсе, их опознаёт `type`
+  (`builtinMacOSServices` → «macOS Services»);
+- на `type` локальных групп опираться нельзя: в июльском снимке ключа не было, в
+  сентябрьском появился `loadedFromFile`. Пропускается только запись без имени в
+  любом из полей — правило «неизвестный тип пропускаем» до сентября 2026 как раз и
+  прятало подписки;
+- `isActive` присутствует только у включённых групп любого вида: **отсутствие ключа
+  означает «выключена»**;
+- ключи словаря (`aaaaac`) — внутренние идентификаторы LS, наружу они не отдаются;
+- `rulegroup -e/-d` принимает имя подписки как есть (проверено:
+  `-d "Require VPN Services"` → код 0); флаг `-u` не нужен — root видит подписки в
+  общей модели;
+- helper отдаёт приложению вид группы полем `kind` (`builtin` / `local` / `remote`).
+  Поле необязательное: ответ без него читается, а во вкладке «Группы» подписка
+  помечается словом «подписка».
+
+Две ловушки подписок:
+
+- **имя подписки живёт на сервере**: если `name` в `.lsrules` изменится, группа
+  выпадет из маппинга, и reconcile начнёт писать «группа … не найдена» — отметьте её
+  заново;
+- **одноимённые локальная группа и подписка** для CLI неотличимы: он принимает только
+  имя. Приложение покажет одну строку и предупредит в журнале; держите имена
+  уникальными.
 
 Если формат сменится с версией LS, парсер переходит к общему поиску по форме объекта,
 а при неудаче сообщает в журнал фактические ключи и форму — по ним разбор дописывается

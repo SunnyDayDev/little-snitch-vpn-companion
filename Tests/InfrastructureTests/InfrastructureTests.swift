@@ -261,3 +261,40 @@ struct SettingsCriteriaTests {
         #expect(criteria.directRuIP == IPAddress("192.0.2.10"))
     }
 }
+
+/// Ответ helper о группах читается и без поля `kind` (старый демон, запасной
+/// разбор модели), и с незнакомым значением: вид становится неизвестным, а
+/// не ошибкой — список групп важнее подписи.
+@Suite("Разбор ответа helper о группах")
+struct HelperRuleGroupDecodingTests {
+    private func json(_ raw: String) -> Data { Data(raw.utf8) }
+
+    @Test("Поле kind отображается в вид группы")
+    func decodesKind() throws {
+        let groups = try HelperRuleGroupDecoding.decode(json("""
+        [{"name": "Require VPN Services", "enabled": false, "kind": "remote"},
+         {"name": "macOS Services", "enabled": true, "kind": "builtin"},
+         {"name": "VPN down", "enabled": true, "kind": "local"}]
+        """))
+        #expect(groups == [
+            RuleGroup(name: "Require VPN Services", enabled: false, kind: .remote),
+            RuleGroup(name: "macOS Services", enabled: true, kind: .builtin),
+            RuleGroup(name: "VPN down", enabled: true, kind: .local),
+        ])
+    }
+
+    @Test("Ответ без kind читается, вид неизвестен")
+    func toleratesMissingKind() throws {
+        let groups = try HelperRuleGroupDecoding.decode(json(
+            #"[{"name": "VPN down", "enabled": true}]"#))
+        #expect(groups == [RuleGroup(name: "VPN down", enabled: true)])
+        #expect(groups.first?.kind == nil)
+    }
+
+    @Test("Незнакомое значение kind — не ошибка")
+    func toleratesUnknownKind() throws {
+        let groups = try HelperRuleGroupDecoding.decode(json(
+            #"[{"name": "Ads", "enabled": true, "kind": "blocklist"}]"#))
+        #expect(groups == [RuleGroup(name: "Ads", enabled: true)])
+    }
+}

@@ -5,7 +5,12 @@ import Foundation
 /// и в приложение, и в helper.
 @objc protocol HelperProtocol {
     func version(reply: @escaping @Sendable (String) -> Void)
-    /// JSON-массив [{"name": String, "enabled": Bool}] либо (nil, описание ошибки)
+    /// JSON-массив [{"name": String, "enabled": Bool, "kind": String?}] либо
+    /// (nil, описание ошибки). `kind` — вид группы, значения из
+    /// `HelperRuleGroupKind`. Поле необязательное: его нет у групп, найденных
+    /// запасным поиском по форме модели, и в ответах helper старых версий;
+    /// незнакомое значение приложение трактует как «вид неизвестен», а не
+    /// как ошибку.
     func listRuleGroups(reply: @escaping @Sendable (Data?, String?) -> Void)
     func setRuleGroup(_ name: String, enabled: Bool,
                       reply: @escaping @Sendable (Bool, String?) -> Void)
@@ -13,6 +18,17 @@ import Foundation
     /// расширение конфига не меняло сигнатуру контракта.
     func setFailsafe(_ config: Data,
                      reply: @escaping @Sendable (Bool, String?) -> Void)
+}
+
+/// Вид rule group в ответе `listRuleGroups`. Строки — часть XPC-контракта,
+/// поэтому живут в файле, который компилируется и в helper, и в приложение.
+enum HelperRuleGroupKind: String, Codable, Sendable {
+    /// Встроенная группа Little Snitch (`type: builtin…`).
+    case builtin
+    /// Локальная группа пользователя (`userProvidedName`).
+    case local
+    /// Подписка по URL на `.lsrules` (`type: loadedFromURL`).
+    case remote
 }
 
 enum HelperConstants {

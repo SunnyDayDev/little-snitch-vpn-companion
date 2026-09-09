@@ -104,6 +104,31 @@ struct RuleGroupModelParserTests {
         }
     }
 
+    @Test("Запасной поиск понимает имя подписки в factoryName")
+    func fallbackReadsFactoryName() throws {
+        let groups = try RuleGroupModelParser.parse(json("""
+        {"model": {"config": {"ruleGroups": [
+            {"factoryName": "VPN down", "isEnabled": true, "rules": []}
+        ]}}}
+        """))
+        // Вид запасной поиск не знает — поле остаётся пустым.
+        #expect(groups == [RuleGroupInfo(name: "VPN down", enabled: true)])
+        #expect(groups.first?.kind == nil)
+    }
+
+    @Test("Ответ helper: kind кодируется строкой, пустой kind опускается")
+    func encodesKindAsOptionalField() throws {
+        let encoded = try JSONEncoder().encode([
+            RuleGroupInfo(name: "Require VPN Services", enabled: false, kind: .remote),
+            RuleGroupInfo(name: "VPN down", enabled: true),
+        ])
+        let array = try #require(JSONSerialization.jsonObject(with: encoded) as? [[String: Any]])
+        #expect(array[0]["kind"] as? String == "remote")
+        #expect(array[0]["enabled"] as? Bool == false)
+        #expect(array[1]["kind"] == nil)
+        #expect(array[1]["name"] as? String == "VPN down")
+    }
+
     @Test("Имена сортируются человекочитаемо, кириллица и латиница вперемешку")
     func sortsNames() throws {
         let groups = try RuleGroupModelParser.parse(json("""

@@ -1,5 +1,9 @@
 /// Получение актуального списка rule groups из Little Snitch (ФТ-3) —
 /// для вкладки «Группы» и для reconcile.
+///
+/// Одноимённые группы (локальная и подписка с одним именем) схлопываются
+/// здесь, а не в helper: при включении по имени различить их нельзя, а
+/// предупредить пользователя может только журнал приложения.
 struct SyncRuleGroups: Sendable {
     enum Outcome: Hashable, Sendable {
         case synced([RuleGroup], helperVersion: String?)
@@ -13,7 +17,15 @@ struct SyncRuleGroups: Sendable {
     func run() async -> Outcome {
         do {
             let version = try? await gateway.helperVersion()
-            let groups = try await gateway.listRuleGroups()
+            let listed = try await gateway.listRuleGroups()
+            let (groups, duplicates) = Self.dedupe(listed)
+            for name in duplicates {
+                await journal.append(JournalEvent(
+                    time: await clock.now(),
+                    trigger: .user,
+                    kind: .warning("одноимённые группы в Little Snitch: «\(name)» — "
+                        + "включаются по имени, различить их нельзя")))
+            }
             await journal.append(JournalEvent(
                 time: await clock.now(),
                 trigger: .user,
@@ -28,5 +40,21 @@ struct SyncRuleGroups: Sendable {
                                               kind: .error(gatewayError.message)))
             return .failed(gatewayError)
         }
+    }
+
+    /// Оставляет первую запись на каждое имя (helper отдаёт список в
+    /// детерминированном порядке) и возвращает имена, встретившиеся повторно.
+    static func dedupe(_ groups: [RuleGroup]) -> (unique: [RuleGroup], duplicates: [String]) {
+        var seen: Set<String> = []
+        var unique: [RuleGroup] = []
+        var duplicates: [String] = []
+        for group in groups {
+            if seen.insert(group.name).inserted {
+                unique.append(group)
+            } else if !duplicates.contains(group.name) {
+                duplicates.append(group.name)
+            }
+        }
+        return (unique, duplicates)
     }
 }
