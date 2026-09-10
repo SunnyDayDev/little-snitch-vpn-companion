@@ -3047,7 +3047,7 @@
                   "fill": "$text-secondary",
                   "textGrowth": "fixed-width",
                   "width": "fill_container",
-                  "content": "egress 104.28.219.140 · warp=on · AMS",
+                  "content": "egress 192.0.2.10 · warp=on · AMS",
                   "fontFamily": "$font",
                   "fontSize": 12,
                   "fontWeight": "normal"
@@ -4116,7 +4116,7 @@
               "content": "Утечка"
             },
             "EmSmJ": {
-              "content": "egress 95.161.248.27 — трафик идёт напрямую"
+              "content": "egress 203.0.113.40 — трафик идёт напрямую"
             }
           }
         },
@@ -5682,7 +5682,7 @@
                           "id": "B5dDzo",
                           "name": "Моно",
                           "fill": "$text-secondary",
-                          "content": "79.173.124.69",
+                          "content": "198.51.100.10",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -6011,7 +6011,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "95.161.248.27",
+                          "content": "203.0.113.40",
                           "fontFamily": "$font",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -6374,7 +6374,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "104.28.219.140",
+                          "content": "192.0.2.10",
                           "fontFamily": "$font",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -6495,7 +6495,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "104.28.219.140",
+                          "content": "192.0.2.10",
                           "fontFamily": "$font",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -7541,7 +7541,7 @@
               "content": "Утечка"
             },
             "EmSmJ": {
-              "content": "egress 95.161.248.27 — трафик идёт напрямую"
+              "content": "egress 203.0.113.40 — трафик идёт напрямую"
             }
           }
         },
@@ -9116,7 +9116,7 @@
                           "id": "n1HGl",
                           "name": "Моно",
                           "fill": "$text-secondary",
-                          "content": "79.173.124.69",
+                          "content": "198.51.100.10",
                           "fontFamily": "$font-mono",
                           "fontSize": 11,
                           "fontWeight": "normal"
@@ -9448,7 +9448,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "95.161.248.27",
+                          "content": "203.0.113.40",
                           "fontFamily": "$font",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -9811,7 +9811,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "104.28.219.140",
+                          "content": "192.0.2.10",
                           "fontFamily": "$font",
                           "fontSize": 12,
                           "fontWeight": "normal"
@@ -9932,7 +9932,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "104.28.219.140",
+                          "content": "192.0.2.10",
                           "fontFamily": "$font",
                           "fontSize": 12,
                           "fontWeight": "normal"
