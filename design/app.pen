@@ -1,5 +1,5 @@
 {
-  "version": "2.15",
+  "version": "2.17",
   "children": [
     {
       "type": "frame",
@@ -2078,7 +2078,7 @@
           "id": "GmUEh",
           "name": "Капшн КНОПКИ · первичная / вторичная / ссылка",
           "fill": "$text-tertiary",
-          "content": "КНОПКИ · первичная / вторичная / ссылка",
+          "content": "КНОПКИ · первичная / вторичная / ссылка · неактивные варианты",
           "fontFamily": "$font",
           "fontSize": 11,
           "fontWeight": "600"
@@ -2116,6 +2116,31 @@
             },
             {
               "type": "frame",
+              "id": "EvIr6",
+              "name": "Атом/Кнопка первичная неактивная",
+              "reusable": true,
+              "opacity": 0.45,
+              "fill": "$accent",
+              "cornerRadius": "$radius-sm",
+              "padding": [
+                6,
+                14
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "oMIgE",
+                  "name": "Текст",
+                  "fill": "#FFFFFF",
+                  "content": "Действие",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "FWO6U",
               "name": "Атом/Кнопка вторичная",
               "reusable": true,
@@ -2133,6 +2158,32 @@
                   "id": "jwyU3",
                   "name": "Текст",
                   "fill": "$text-primary",
+                  "content": "Действие",
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Qmo8F",
+              "name": "Атом/Кнопка вторичная неактивная",
+              "reusable": true,
+              "fill": "$bg-card",
+              "cornerRadius": "$radius-sm",
+              "stroke": "$separator",
+              "strokeWidth": 1,
+              "padding": [
+                5,
+                12
+              ],
+              "children": [
+                {
+                  "type": "text",
+                  "id": "sD1UC",
+                  "name": "Текст",
+                  "fill": "$text-tertiary",
                   "content": "Действие",
                   "fontFamily": "$font",
                   "fontSize": 12,
@@ -3343,7 +3394,7 @@
           "id": "ESqDl",
           "name": "Капшн КНОПКИ · первичная / вторичная / ссылка",
           "fill": "$text-tertiary",
-          "content": "КНОПКИ · первичная / вторичная / ссылка",
+          "content": "КНОПКИ · первичная / вторичная / ссылка · неактивные варианты",
           "fontFamily": "$font",
           "fontSize": 11,
           "fontWeight": "600"
@@ -3361,9 +3412,21 @@
               "ref": "EyU1s"
             },
             {
+              "id": "MYkS4",
+              "type": "ref",
+              "ref": "EvIr6",
+              "name": "Первичная неактивная"
+            },
+            {
               "id": "F54aof",
               "type": "ref",
               "ref": "FWO6U"
+            },
+            {
+              "id": "ZLgcu",
+              "type": "ref",
+              "ref": "Qmo8F",
+              "name": "Вторичная неактивная"
             },
             {
               "id": "CwrAa",
@@ -11399,6 +11462,1860 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "cIonV",
+      "x": 3880,
+      "y": 2600,
+      "name": "Настройки — helper: состояния (light)",
+      "width": 720,
+      "fill": "$bg-popover",
+      "cornerRadius": 16,
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "layout": "vertical",
+      "gap": 12,
+      "padding": 24,
+      "children": [
+        {
+          "type": "text",
+          "id": "k5loTz",
+          "name": "Титул",
+          "fill": "$text-primary",
+          "content": "Настройки — helper: состояния",
+          "fontFamily": "$font",
+          "fontSize": 15,
+          "fontWeight": "700"
+        },
+        {
+          "type": "text",
+          "id": "d1Wd3",
+          "name": "Заметка",
+          "fill": "$text-secondary",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "Строка «Привилегированный helper» на вкладке Общие. Подпись и кнопка выводятся из одного состояния helper: пока идёт установка, переустановка или удаление, кнопка неактивна, а подпись показывает, чего ждём. Проблемные состояния подписаны warn-цветом, повреждённая сборка — danger.",
+          "lineHeight": 1.4,
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "normal"
+        },
+        {
+          "type": "text",
+          "id": "hrGpd",
+          "name": "Капшн НЕ УСТАНОВЛЕН · notRegistered",
+          "fill": "$text-tertiary",
+          "content": "НЕ УСТАНОВЛЕН · notRegistered",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "WJ7GZ",
+          "name": "Карточка НЕ УСТАНОВЛЕН · notRegistered",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "cCeYY",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "не установлен",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "eE1On",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Установить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "JdexO",
+          "name": "Капшн НЕ НАЙДЕН В БАНДЛЕ · notFound",
+          "fill": "$text-tertiary",
+          "content": "НЕ НАЙДЕН В БАНДЛЕ · notFound",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "u99jrZ",
+          "name": "Карточка НЕ НАЙДЕН В БАНДЛЕ · notFound",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "f2lrOy",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "не найден в бандле — сборка повреждена",
+                  "fill": "$danger"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "geCSr",
+                      "type": "ref",
+                      "ref": "Qmo8F",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "sD1UC": {
+                          "content": "Установить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "O0vak",
+          "name": "Капшн ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "fill": "$text-tertiary",
+          "content": "ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "Z3KIR",
+          "name": "Карточка ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "K0264u",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "type": "frame",
+                  "id": "X3aScV",
+                  "name": "Суб со ссылкой",
+                  "width": "fill_container",
+                  "gap": 4,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "BY1jw",
+                      "name": "Статус",
+                      "fill": "$warn",
+                      "content": "ждёт одобрения в Системных настройках ·",
+                      "lineHeight": 1.35,
+                      "fontFamily": "$font",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "id": "YmqG0",
+                      "type": "ref",
+                      "ref": "qlJb4",
+                      "name": "Ссылка",
+                      "content": "Открыть Системные настройки…",
+                      "fontSize": 11
+                    }
+                  ]
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "KsdC7",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Удалить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "bXCBT",
+          "name": "Капшн УСТАНАВЛИВАЕМ",
+          "fill": "$text-tertiary",
+          "content": "УСТАНАВЛИВАЕМ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "qtc0D",
+          "name": "Карточка УСТАНАВЛИВАЕМ",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "SBJK9",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "устанавливаем: ждём launchd… 12 с",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "eWy8T",
+                      "type": "ref",
+                      "ref": "Qmo8F",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "sD1UC": {
+                          "content": "Устанавливаем…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "kUjiC",
+          "name": "Капшн ПЕРЕУСТАНАВЛИВАЕМ",
+          "fill": "$text-tertiary",
+          "content": "ПЕРЕУСТАНАВЛИВАЕМ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "mrN7X",
+          "name": "Карточка ПЕРЕУСТАНАВЛИВАЕМ",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "IvyFk",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "переустанавливаем: ждём launchd… 12 с",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "OQsB9",
+                      "type": "ref",
+                      "ref": "Qmo8F",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "sD1UC": {
+                          "content": "Переустанавливаем…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "r235Ur",
+          "name": "Капшн УДАЛЯЕМ",
+          "fill": "$text-tertiary",
+          "content": "УДАЛЯЕМ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "BrJQ1",
+          "name": "Карточка УДАЛЯЕМ",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "UjJwm",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "снимаем регистрацию…",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "SNCnV",
+                      "type": "ref",
+                      "ref": "Qmo8F",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "sD1UC": {
+                          "content": "Удаляем…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "r350o",
+          "name": "Капшн ПОДКЛЮЧЁН · версия совпадает",
+          "fill": "$text-tertiary",
+          "content": "ПОДКЛЮЧЁН · версия совпадает",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "rt4So",
+          "name": "Карточка ПОДКЛЮЧЁН · версия совпадает",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "mrNAU",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "v1.0 · подключён · root",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "gKY0j",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Удалить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "jcbRr",
+          "name": "Капшн ПОДКЛЮЧЁН · версия отличается",
+          "fill": "$text-tertiary",
+          "content": "ПОДКЛЮЧЁН · версия отличается",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "w4eAl",
+          "name": "Карточка ПОДКЛЮЧЁН · версия отличается",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "fKdUl",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "v1.0 · устарел, в бандле новее",
+                  "fill": "$warn"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "MMY36",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Переустановить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "o1f0Dd",
+          "name": "Капшн ЗАРЕГИСТРИРОВАН, НО МОЛЧИТ",
+          "fill": "$text-tertiary",
+          "content": "ЗАРЕГИСТРИРОВАН, НО МОЛЧИТ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "sURDe",
+          "name": "Карточка ЗАРЕГИСТРИРОВАН, НО МОЛЧИТ",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "yMMGt",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "зарегистрирован, но не отвечает",
+                  "fill": "$warn"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "UVuhk",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Переустановить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "DYIT4",
+          "name": "Капшн LITTLE SNITCH НЕ ПУСКАЕТ CLI · helper исправен",
+          "fill": "$text-tertiary",
+          "content": "LITTLE SNITCH НЕ ПУСКАЕТ CLI · helper исправен",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "NzR7a",
+          "name": "Карточка LITTLE SNITCH НЕ ПУСКАЕТ CLI · helper исправен",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "gTyrP",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "v1.0 · подключён · root",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "beCqf",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Удалить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": "Q6EZW",
+              "type": "ref",
+              "ref": "U65lf",
+              "name": "Разделитель",
+              "width": "fill_container"
+            },
+            {
+              "id": "oLUAl",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд Little Snitch",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Little Snitch не пускает свой CLI"
+                },
+                "LoICn": {
+                  "content": "включи доступ в Little Snitch → Настройки → Безопасность",
+                  "fill": "$danger"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "P9z3y",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Открыть Little Snitch…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "E4RHv",
+      "x": 3880,
+      "y": 3900,
+      "name": "Настройки — helper: состояния (dark)",
+      "theme": {
+        "mode": "dark"
+      },
+      "width": 720,
+      "fill": "$bg-popover",
+      "cornerRadius": 16,
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "layout": "vertical",
+      "gap": 12,
+      "padding": 24,
+      "children": [
+        {
+          "type": "text",
+          "id": "lVZVI",
+          "name": "Титул",
+          "fill": "$text-primary",
+          "content": "Настройки — helper: состояния",
+          "fontFamily": "$font",
+          "fontSize": 15,
+          "fontWeight": "700"
+        },
+        {
+          "type": "text",
+          "id": "JV1bT",
+          "name": "Заметка",
+          "fill": "$text-secondary",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "Строка «Привилегированный helper» на вкладке Общие. Подпись и кнопка выводятся из одного состояния helper: пока идёт установка, переустановка или удаление, кнопка неактивна, а подпись показывает, чего ждём. Проблемные состояния подписаны warn-цветом, повреждённая сборка — danger.",
+          "lineHeight": 1.4,
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "normal"
+        },
+        {
+          "type": "text",
+          "id": "GYJ6q",
+          "name": "Капшн НЕ УСТАНОВЛЕН · notRegistered",
+          "fill": "$text-tertiary",
+          "content": "НЕ УСТАНОВЛЕН · notRegistered",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "RDzRM",
+          "name": "Карточка НЕ УСТАНОВЛЕН · notRegistered",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "iLO1l",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "не установлен",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "yFGDE",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Установить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "QWD14",
+          "name": "Капшн НЕ НАЙДЕН В БАНДЛЕ · notFound",
+          "fill": "$text-tertiary",
+          "content": "НЕ НАЙДЕН В БАНДЛЕ · notFound",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "a7XrG",
+          "name": "Карточка НЕ НАЙДЕН В БАНДЛЕ · notFound",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "YgG3n",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "не найден в бандле — сборка повреждена",
+                  "fill": "$danger"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "W4klFJ",
+                      "type": "ref",
+                      "ref": "Qmo8F",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "sD1UC": {
+                          "content": "Установить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "w3DNKD",
+          "name": "Капшн ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "fill": "$text-tertiary",
+          "content": "ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "azowY",
+          "name": "Карточка ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "mRTV5",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "type": "frame",
+                  "id": "MXtS3",
+                  "name": "Суб со ссылкой",
+                  "width": "fill_container",
+                  "gap": 4,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "H9VRo4",
+                      "name": "Статус",
+                      "fill": "$warn",
+                      "content": "ждёт одобрения в Системных настройках ·",
+                      "lineHeight": 1.35,
+                      "fontFamily": "$font",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "id": "vWcEf",
+                      "type": "ref",
+                      "ref": "qlJb4",
+                      "name": "Ссылка",
+                      "content": "Открыть Системные настройки…",
+                      "fontSize": 11
+                    }
+                  ]
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "GjZwM",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Удалить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "e1Bmut",
+          "name": "Капшн УСТАНАВЛИВАЕМ",
+          "fill": "$text-tertiary",
+          "content": "УСТАНАВЛИВАЕМ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "Y0uzu",
+          "name": "Карточка УСТАНАВЛИВАЕМ",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "K0pcOG",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "устанавливаем: ждём launchd… 12 с",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "pms1l",
+                      "type": "ref",
+                      "ref": "Qmo8F",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "sD1UC": {
+                          "content": "Устанавливаем…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "Atyxm",
+          "name": "Капшн ПЕРЕУСТАНАВЛИВАЕМ",
+          "fill": "$text-tertiary",
+          "content": "ПЕРЕУСТАНАВЛИВАЕМ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "Z61vqy",
+          "name": "Карточка ПЕРЕУСТАНАВЛИВАЕМ",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "pv0VJ",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "переустанавливаем: ждём launchd… 12 с",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "I0ql5p",
+                      "type": "ref",
+                      "ref": "Qmo8F",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "sD1UC": {
+                          "content": "Переустанавливаем…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "v5GUam",
+          "name": "Капшн УДАЛЯЕМ",
+          "fill": "$text-tertiary",
+          "content": "УДАЛЯЕМ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "vKvqJ",
+          "name": "Карточка УДАЛЯЕМ",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "i4goE",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "снимаем регистрацию…",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "ThOnA",
+                      "type": "ref",
+                      "ref": "Qmo8F",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "sD1UC": {
+                          "content": "Удаляем…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "ysXF2",
+          "name": "Капшн ПОДКЛЮЧЁН · версия совпадает",
+          "fill": "$text-tertiary",
+          "content": "ПОДКЛЮЧЁН · версия совпадает",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "A830j",
+          "name": "Карточка ПОДКЛЮЧЁН · версия совпадает",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "YAz8A",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "v1.0 · подключён · root",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "w5mPg",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Удалить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "BkZQt",
+          "name": "Капшн ПОДКЛЮЧЁН · версия отличается",
+          "fill": "$text-tertiary",
+          "content": "ПОДКЛЮЧЁН · версия отличается",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "BwHox",
+          "name": "Карточка ПОДКЛЮЧЁН · версия отличается",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "nPCnj",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "v1.0 · устарел, в бандле новее",
+                  "fill": "$warn"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "Eh2qo",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Переустановить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "DAYhK",
+          "name": "Капшн ЗАРЕГИСТРИРОВАН, НО МОЛЧИТ",
+          "fill": "$text-tertiary",
+          "content": "ЗАРЕГИСТРИРОВАН, НО МОЛЧИТ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "aVsF5",
+          "name": "Карточка ЗАРЕГИСТРИРОВАН, НО МОЛЧИТ",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "w0VDs",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "зарегистрирован, но не отвечает",
+                  "fill": "$warn"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "kqRkl",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Переустановить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "zjf0H",
+          "name": "Капшн LITTLE SNITCH НЕ ПУСКАЕТ CLI · helper исправен",
+          "fill": "$text-tertiary",
+          "content": "LITTLE SNITCH НЕ ПУСКАЕТ CLI · helper исправен",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "type": "frame",
+          "id": "OrmlQ",
+          "name": "Карточка LITTLE SNITCH НЕ ПУСКАЕТ CLI · helper исправен",
+          "clip": true,
+          "width": "fill_container",
+          "fill": "$bg-card",
+          "cornerRadius": "$radius-lg",
+          "stroke": "$separator",
+          "strokeWidth": 1,
+          "layout": "vertical",
+          "children": [
+            {
+              "id": "aUJwk",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд helper",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Привилегированный helper"
+                },
+                "LoICn": {
+                  "content": "v1.0 · подключён · root",
+                  "fill": "$text-secondary"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "pPvC1",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Удалить…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "id": "Xtfim",
+              "type": "ref",
+              "ref": "U65lf",
+              "name": "Разделитель",
+              "width": "fill_container"
+            },
+            {
+              "id": "S1o3C",
+              "type": "ref",
+              "ref": "jovev",
+              "name": "Ряд Little Snitch",
+              "width": "fill_container",
+              "descendants": {
+                "UKxx5": {
+                  "content": "Little Snitch не пускает свой CLI"
+                },
+                "LoICn": {
+                  "content": "включи доступ в Little Snitch → Настройки → Безопасность",
+                  "fill": "$danger"
+                },
+                "krGlD": {
+                  "children": [
+                    {
+                      "id": "Disbv",
+                      "type": "ref",
+                      "ref": "FWO6U",
+                      "name": "Кнопка",
+                      "descendants": {
+                        "jwyU3": {
+                          "content": "Открыть Little Snitch…"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "rYTnC",
+      "x": 7400,
+      "y": 2600,
+      "name": "Онбординг — шаг 1: состояния (light)",
+      "width": 552,
+      "fill": "$bg-popover",
+      "cornerRadius": 16,
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "layout": "vertical",
+      "gap": 12,
+      "padding": 24,
+      "children": [
+        {
+          "type": "text",
+          "id": "dQSUq",
+          "name": "Титул",
+          "fill": "$text-primary",
+          "content": "Онбординг — шаг 1: состояния",
+          "fontFamily": "$font",
+          "fontSize": 15,
+          "fontWeight": "700"
+        },
+        {
+          "type": "text",
+          "id": "M0Th79",
+          "name": "Заметка",
+          "fill": "$text-secondary",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "Карточка шага 1 выводится из того же состояния helper, что и строка в настройках. Ссылка на Системные настройки живёт в тексте шага; подключённый helper закрывает шаг — кнопка исчезает, номер становится галочкой.",
+          "lineHeight": 1.4,
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "normal"
+        },
+        {
+          "type": "text",
+          "id": "J44XH",
+          "name": "Капшн НАЧАЛЬНОЕ · notRegistered",
+          "fill": "$text-tertiary",
+          "content": "НАЧАЛЬНОЕ · notRegistered",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "id": "F9Mhkl",
+          "type": "ref",
+          "ref": "mJ6U8",
+          "name": "Шаг 1 · не установлен",
+          "width": "fill_container",
+          "descendants": {
+            "heCiL": {
+              "content": "Helper — единственный компонент с правами root: только он вызывает littlesnitch CLI. Подтверди установку в System Settings → Основные → Объекты входа."
+            }
+          }
+        },
+        {
+          "type": "text",
+          "id": "v8jCB2",
+          "name": "Капшн УСТАНАВЛИВАЕМ",
+          "fill": "$text-tertiary",
+          "content": "УСТАНАВЛИВАЕМ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "id": "P8qScP",
+          "type": "ref",
+          "ref": "mJ6U8",
+          "name": "Шаг 1 · устанавливаем",
+          "width": "fill_container",
+          "descendants": {
+            "heCiL": {
+              "type": "frame",
+              "id": "DWbgg",
+              "name": "Тексты шага",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "sAfxM",
+                  "name": "Описание",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Helper — единственный компонент с правами root: только он вызывает littlesnitch CLI. Подтверди установку в System Settings → Основные → Объекты входа.",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "v6Cdeg",
+                  "name": "Статус",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "регистрируем демон: ждём launchd… 12 с",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            "w4P67h": {
+              "id": "U4M3ME",
+              "type": "ref",
+              "ref": "EvIr6",
+              "name": "Кнопка",
+              "descendants": {
+                "oMIgE": {
+                  "content": "Устанавливаем…"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "text",
+          "id": "TTkLS",
+          "name": "Капшн ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "fill": "$text-tertiary",
+          "content": "ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "id": "k7SeI",
+          "type": "ref",
+          "ref": "mJ6U8",
+          "name": "Шаг 1 · ждёт одобрения",
+          "width": "fill_container",
+          "descendants": {
+            "heCiL": {
+              "type": "frame",
+              "id": "W8ukE",
+              "name": "Тексты шага",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "xJQ9y",
+                  "name": "Описание",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Helper — единственный компонент с правами root: только он вызывает littlesnitch CLI. Подтверди установку в System Settings → Основные → Объекты входа.",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "bY6oq",
+                  "name": "Статус со ссылкой",
+                  "width": "fill_container",
+                  "gap": 4,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "D26l6X",
+                      "name": "Статус",
+                      "fill": "$warn",
+                      "content": "ждёт одобрения в Системных настройках ·",
+                      "lineHeight": 1.45,
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "id": "j0KDU",
+                      "type": "ref",
+                      "ref": "qlJb4",
+                      "name": "Ссылка",
+                      "content": "Открыть Системные настройки…"
+                    }
+                  ]
+                }
+              ]
+            },
+            "w4P67h": {
+              "id": "DrJfj",
+              "type": "ref",
+              "ref": "FWO6U",
+              "name": "Кнопка",
+              "descendants": {
+                "jwyU3": {
+                  "content": "Удалить…"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "text",
+          "id": "g2DqC",
+          "name": "Капшн ПОДКЛЮЧЁН · enabled, шаг закрыт",
+          "fill": "$text-tertiary",
+          "content": "ПОДКЛЮЧЁН · enabled, шаг закрыт",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "id": "Tps9F",
+          "type": "ref",
+          "ref": "mJ6U8",
+          "name": "Шаг 1 · подключён",
+          "width": "fill_container",
+          "descendants": {
+            "v0E5cs": {
+              "fill": "$ok"
+            },
+            "UehOv": {
+              "content": "✓"
+            },
+            "heCiL": {
+              "type": "frame",
+              "id": "y9ODY",
+              "name": "Тексты шага",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Tb8NJ",
+                  "name": "Описание",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Helper — единственный компонент с правами root: только он вызывает littlesnitch CLI. Подтверди установку в System Settings → Основные → Объекты входа.",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "ohiVy",
+                  "name": "Статус",
+                  "fill": "$ok",
+                  "content": "v1.0 · подключён · root",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            "w4P67h": {
+              "enabled": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "LNj0v",
+      "x": 7400,
+      "y": 3900,
+      "name": "Онбординг — шаг 1: состояния (dark)",
+      "theme": {
+        "mode": "dark"
+      },
+      "width": 552,
+      "fill": "$bg-popover",
+      "cornerRadius": 16,
+      "stroke": "$separator",
+      "strokeWidth": 1,
+      "layout": "vertical",
+      "gap": 12,
+      "padding": 24,
+      "children": [
+        {
+          "type": "text",
+          "id": "ALSNN",
+          "name": "Титул",
+          "fill": "$text-primary",
+          "content": "Онбординг — шаг 1: состояния",
+          "fontFamily": "$font",
+          "fontSize": 15,
+          "fontWeight": "700"
+        },
+        {
+          "type": "text",
+          "id": "z0wGz",
+          "name": "Заметка",
+          "fill": "$text-secondary",
+          "textGrowth": "fixed-width",
+          "width": "fill_container",
+          "content": "Карточка шага 1 выводится из того же состояния helper, что и строка в настройках. Ссылка на Системные настройки живёт в тексте шага; подключённый helper закрывает шаг — кнопка исчезает, номер становится галочкой.",
+          "lineHeight": 1.4,
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "normal"
+        },
+        {
+          "type": "text",
+          "id": "LM8h3",
+          "name": "Капшн НАЧАЛЬНОЕ · notRegistered",
+          "fill": "$text-tertiary",
+          "content": "НАЧАЛЬНОЕ · notRegistered",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "id": "Jmd8d",
+          "type": "ref",
+          "ref": "mJ6U8",
+          "name": "Шаг 1 · не установлен",
+          "width": "fill_container",
+          "descendants": {
+            "heCiL": {
+              "content": "Helper — единственный компонент с правами root: только он вызывает littlesnitch CLI. Подтверди установку в System Settings → Основные → Объекты входа."
+            }
+          }
+        },
+        {
+          "type": "text",
+          "id": "HcLJl",
+          "name": "Капшн УСТАНАВЛИВАЕМ",
+          "fill": "$text-tertiary",
+          "content": "УСТАНАВЛИВАЕМ",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "id": "R0ig9X",
+          "type": "ref",
+          "ref": "mJ6U8",
+          "name": "Шаг 1 · устанавливаем",
+          "width": "fill_container",
+          "descendants": {
+            "heCiL": {
+              "type": "frame",
+              "id": "Zb0Bs",
+              "name": "Тексты шага",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "pYp9P",
+                  "name": "Описание",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Helper — единственный компонент с правами root: только он вызывает littlesnitch CLI. Подтверди установку в System Settings → Основные → Объекты входа.",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "kW57r",
+                  "name": "Статус",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "регистрируем демон: ждём launchd… 12 с",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            "w4P67h": {
+              "id": "F198h",
+              "type": "ref",
+              "ref": "EvIr6",
+              "name": "Кнопка",
+              "descendants": {
+                "oMIgE": {
+                  "content": "Устанавливаем…"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "text",
+          "id": "VEX8n",
+          "name": "Капшн ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "fill": "$text-tertiary",
+          "content": "ЖДЁТ ОДОБРЕНИЯ · requiresApproval",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "id": "n5X3V4",
+          "type": "ref",
+          "ref": "mJ6U8",
+          "name": "Шаг 1 · ждёт одобрения",
+          "width": "fill_container",
+          "descendants": {
+            "heCiL": {
+              "type": "frame",
+              "id": "dTilB",
+              "name": "Тексты шага",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Plugg",
+                  "name": "Описание",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Helper — единственный компонент с правами root: только он вызывает littlesnitch CLI. Подтверди установку в System Settings → Основные → Объекты входа.",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "nMBoR",
+                  "name": "Статус со ссылкой",
+                  "width": "fill_container",
+                  "gap": 4,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "z6hqd",
+                      "name": "Статус",
+                      "fill": "$warn",
+                      "content": "ждёт одобрения в Системных настройках ·",
+                      "lineHeight": 1.45,
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "id": "JhMLJ",
+                      "type": "ref",
+                      "ref": "qlJb4",
+                      "name": "Ссылка",
+                      "content": "Открыть Системные настройки…"
+                    }
+                  ]
+                }
+              ]
+            },
+            "w4P67h": {
+              "id": "YKG0F",
+              "type": "ref",
+              "ref": "FWO6U",
+              "name": "Кнопка",
+              "descendants": {
+                "jwyU3": {
+                  "content": "Удалить…"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "text",
+          "id": "KYhXe",
+          "name": "Капшн ПОДКЛЮЧЁН · enabled, шаг закрыт",
+          "fill": "$text-tertiary",
+          "content": "ПОДКЛЮЧЁН · enabled, шаг закрыт",
+          "fontFamily": "$font",
+          "fontSize": 11,
+          "fontWeight": "600"
+        },
+        {
+          "id": "T074nZ",
+          "type": "ref",
+          "ref": "mJ6U8",
+          "name": "Шаг 1 · подключён",
+          "width": "fill_container",
+          "descendants": {
+            "v0E5cs": {
+              "fill": "$ok"
+            },
+            "UehOv": {
+              "content": "✓"
+            },
+            "heCiL": {
+              "type": "frame",
+              "id": "WuVBt",
+              "name": "Тексты шага",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "H589Gt",
+                  "name": "Описание",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Helper — единственный компонент с правами root: только он вызывает littlesnitch CLI. Подтверди установку в System Settings → Основные → Объекты входа.",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "U9H0BQ",
+                  "name": "Статус",
+                  "fill": "$ok",
+                  "content": "v1.0 · подключён · root",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            "w4P67h": {
+              "enabled": false
+            }
+          }
         }
       ]
     }
