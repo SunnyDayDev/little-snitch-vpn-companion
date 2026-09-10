@@ -29,10 +29,22 @@ enum CompositionRoot {
             notifications: notifications,
             clock: SystemClock())
 
+        // Жизненный цикл helper: регистрация, ожидание launchd, удаление.
+        // Факт «онбординг пройден» читается лениво — он меняется на лету.
+        let lifecycle = HelperLifecycle(
+            registrar: HelperInstaller(),
+            gateway: gateway,
+            failsafe: gateway,
+            facts: DefaultsHelperInstallFacts(),
+            journal: journal,
+            clock: SystemClock(),
+            onboardingCompleted: { OnboardingState.isCompleted })
+
         return AppModel(coordinator: coordinator,
                         settingsStore: settingsStore,
                         journal: journal,
                         gateway: gateway,
+                        lifecycle: lifecycle,
                         notifications: notifications,
                         settings: settings)
     }

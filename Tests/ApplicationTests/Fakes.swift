@@ -188,11 +188,39 @@ actor FakeRuleGroupGateway: RuleGroupGateway {
         self.groups = groups
     }
 
+    /// Версия helper по сценарию: молчит до K-го вызова или до условия
+    /// (например, «после полного цикла»), отвечает заданной строкой.
+    private var versionProvider: @Sendable () -> String = { "1.0" }
+    private var versionAnswers: @Sendable (Int) -> Bool = { _ in true }
+    private(set) var versionCallCount = 0
+    private(set) var resetConnectionCount = 0
+
     func failList(with error: RuleGroupGatewayError?) { listError = error }
     func failSet(with error: RuleGroupGatewayError?) { setError = error }
     func setList(_ list: [RuleGroup]) { listOverride = list }
 
-    func helperVersion() async throws -> String { "1.0" }
+    func setVersion(_ version: String) { versionProvider = { version } }
+    func setVersionProvider(_ provider: @escaping @Sendable () -> String) {
+        versionProvider = provider
+    }
+    /// Отвечать начиная с вызова номер `call` (считая с единицы).
+    func answerVersion(fromCall call: Int) { versionAnswers = { $0 >= call } }
+    func answerVersion(when condition: @escaping @Sendable () -> Bool) {
+        versionAnswers = { _ in condition() }
+    }
+    func silenceVersion() { versionAnswers = { _ in false } }
+
+    func helperVersion() async throws -> String {
+        versionCallCount += 1
+        guard versionAnswers(versionCallCount) else {
+            // Текст — как у XPC к незагруженному сервису (журнал 2026-09-09).
+            throw RuleGroupGatewayError.helperUnavailable(
+                "Connection init failed at lookup with error 3 - No such process")
+        }
+        return versionProvider()
+    }
+
+    func resetConnection() async { resetConnectionCount += 1 }
 
     func listRuleGroups() async throws -> [RuleGroup] {
         listCallCount += 1
@@ -309,6 +337,13 @@ actor ManualClock: Clock {
         for waiter in due { waiter.continuation.resume() }
     }
 
+    /// Шагнуть ровно к ближайшему дедлайну: интервалы ожидания helper
+    /// нарастают, и тесту незачем знать их наизусть.
+    func advanceToNextDeadline() {
+        guard let next = waiters.map(\.deadline).min() else { return }
+        advance(by: max(0, next - current.secondsSinceEpoch))
+    }
+
     /// Ждёт, пока в часах не окажется нужное число спящих — по событию, а не
     /// опросом: `sleep` уведомляет подписчиков в момент постановки спящего.
     func waitForSleepers(_ count: Int) async {
@@ -317,6 +352,109 @@ actor ManualClock: Clock {
         sleeperObservers.append(continuation)
         defer { continuation.finish() }
         for await sleepers in stream where sleepers >= count { break }
+    }
+}
+
+// MARK: - Helper
+
+/// Регистратор демона без SMAppService: статус переключается по сценарию.
+/// Класс с блокировкой, а не актор: `status` в порте синхронный.
+final class FakeHelperRegistrar: HelperRegistrar, @unchecked Sendable {
+    private let lock = NSLock()
+    private var currentStatus: HelperRegistrationStatus
+    private var bundled: String
+    private var registers = 0
+    private var unregisters = 0
+    private var approvalPrompts = 0
+    private var afterRegister: HelperRegistrationStatus = .enabled
+    private var afterUnregister: HelperRegistrationStatus = .notRegistered
+    private var registerError: (any Error)?
+    private var registerFailuresLeft = 0
+    private var unregisterError: (any Error)?
+    /// `nil` — job есть ровно тогда, когда статус `enabled`; иначе — сценарий
+    /// (например, job ещё выгружается после снятия регистрации).
+    private var jobLoadedOverride: Bool??
+    private(set) var jobProbeCount = 0
+
+    struct TransientError: Error, CustomStringConvertible {
+        var description: String { "Operation not permitted" }
+    }
+
+    init(status: HelperRegistrationStatus, bundledVersion: String = "1.0") {
+        currentStatus = status
+        bundled = bundledVersion
+    }
+
+    var status: HelperRegistrationStatus { lock.withLock { currentStatus } }
+    var bundledVersion: String { lock.withLock { bundled } }
+    var registerCount: Int { lock.withLock { registers } }
+    var unregisterCount: Int { lock.withLock { unregisters } }
+    var approvalPromptCount: Int { lock.withLock { approvalPrompts } }
+
+    func setStatus(_ status: HelperRegistrationStatus) { lock.withLock { currentStatus = status } }
+    func setStatusAfterRegister(_ status: HelperRegistrationStatus) { lock.withLock { afterRegister = status } }
+    func setStatusAfterUnregister(_ status: HelperRegistrationStatus) { lock.withLock { afterUnregister = status } }
+    func failRegister(with error: (any Error)?) { lock.withLock { registerError = error } }
+    /// Первые `times` вызовов `register()` падают временной ошибкой.
+    func failRegister(times: Int) { lock.withLock { registerFailuresLeft = times } }
+    func failUnregister(with error: (any Error)?) { lock.withLock { unregisterError = error } }
+    func setJobLoaded(_ value: Bool?) { lock.withLock { jobLoadedOverride = .some(value) } }
+    func clearJobLoadedOverride() { lock.withLock { jobLoadedOverride = nil } }
+
+    func register() throws {
+        try lock.withLock {
+            if let registerError { throw registerError }
+            if registerFailuresLeft > 0 {
+                registerFailuresLeft -= 1
+                throw TransientError()
+            }
+            registers += 1
+            currentStatus = afterRegister
+        }
+    }
+
+    func isJobLoaded() async -> Bool? {
+        lock.withLock {
+            jobProbeCount += 1
+            if let jobLoadedOverride { return jobLoadedOverride }
+            return currentStatus == .enabled
+        }
+    }
+
+    func unregister() async throws {
+        try lock.withLock {
+            if let unregisterError { throw unregisterError }
+            unregisters += 1
+            currentStatus = afterUnregister
+        }
+    }
+
+    func openApprovalSettings() async {
+        lock.withLock { approvalPrompts += 1 }
+    }
+}
+
+final class FakeHelperInstallFacts: HelperInstallFacts, @unchecked Sendable {
+    private let lock = NSLock()
+    private var removed: Bool
+
+    init(removedByUser: Bool = false) { removed = removedByUser }
+
+    var removedByUser: Bool { lock.withLock { removed } }
+    func setRemovedByUser(_ value: Bool) { lock.withLock { removed = value } }
+}
+
+actor FakeFailsafeSync: FailsafeSyncing {
+    private(set) var configs: [FailsafeConfig] = []
+    private var error: (any Error)?
+
+    init() {}
+
+    func failNext(_ error: (any Error)?) { self.error = error }
+
+    func syncFailsafe(_ config: FailsafeConfig) async throws {
+        if let error { throw error }
+        configs.append(config)
     }
 }
 

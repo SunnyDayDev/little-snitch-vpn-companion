@@ -137,6 +137,7 @@ enum JournalFormatting {
         case .ruBeacon: "ру-маяк"
         case .user: "пользователь"
         case .power: "питание"
+        case .helper: "helper"
         }
     }
 

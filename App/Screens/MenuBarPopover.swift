@@ -28,10 +28,12 @@ struct MenuBarPopover: View {
                           value: presentation.groupsValue,
                           valueColor: presentation.groupsValueColor)
                 DSInfoRow(label: "Сеть", value: presentation.network)
+                // Та же строка статуса, что в настройках, без ссылки; во время
+                // операции над регистрацией тон предупреждающий, а не ошибка.
                 if !model.diagnosis.isReady {
                     DSInfoRow(label: diagnosisLabel,
                               value: model.diagnosis.title,
-                              valueColor: DSColor.danger)
+                              valueColor: diagnosisColor)
                 }
             }
             .padding(DSMetrics.Popover.infoPadding)
@@ -73,7 +75,15 @@ struct MenuBarPopover: View {
     private var diagnosisLabel: String {
         switch model.diagnosis {
         case .littleSnitchNotAuthorized: "Little Snitch"
-        case .ready, .helperNotInstalled, .failing: "Helper"
+        case .ready, .helper, .failing: "Helper"
+        }
+    }
+
+    private var diagnosisColor: Color {
+        switch model.diagnosis.tone {
+        case .normal, .warning: DSColor.warn
+        case .danger: DSColor.danger
+        case .ok: DSColor.ok
         }
     }
 

@@ -298,3 +298,22 @@ struct HelperRuleGroupDecodingTests {
         #expect(groups == [RuleGroup(name: "Ads", enabled: true)])
     }
 }
+
+@Suite("DefaultsHelperInstallFacts")
+struct DefaultsHelperInstallFactsTests {
+    private func isolatedDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "lsvpn-tests-\(UUID().uuidString)")!
+    }
+
+    @Test("Флаг «удалён пользователем» переживает перечитывание и по умолчанию снят")
+    func roundTripsRemovalFlag() {
+        let defaults = isolatedDefaults()
+        #expect(!DefaultsHelperInstallFacts(defaults: defaults).removedByUser)
+
+        DefaultsHelperInstallFacts(defaults: defaults).setRemovedByUser(true)
+        #expect(DefaultsHelperInstallFacts(defaults: defaults).removedByUser)
+
+        DefaultsHelperInstallFacts(defaults: defaults).setRemovedByUser(false)
+        #expect(!DefaultsHelperInstallFacts(defaults: defaults).removedByUser)
+    }
+}
