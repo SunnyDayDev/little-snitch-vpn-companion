@@ -96,11 +96,25 @@ private struct GeneralSettingsTab: View {
                         DSToggle(isOn: binding(\.escalationEnabled))
                     }
                 }
+                // Кнопка и подпись — из единого представления состояния helper
+                // (спека helper-lifecycle): «Установить…», «Переустановить…» или
+                // «Удалить…», неактивная кнопка во время операции, ссылка на
+                // Системные настройки в подписи при ожидании одобрения.
                 SettingsRow {
+                    let presentation = model.helperPresentation
                     DSSettingRow(title: "Привилегированный helper",
-                                 subtitle: helperSubtitle) {
-                        DSSecondaryButton("Переустановить…") {
-                            Task { await model.reinstallHelper() }
+                                 subtitle: presentation.showsApprovalLink
+                                     ? presentation.statusText + " ·"
+                                     : presentation.statusText,
+                                 subtitleTone: presentation.tone.dsTone,
+                                 subtitleLink: presentation.showsApprovalLink
+                                     ? DSSubtitleLink(title: HelperPresentation.approvalLinkTitle) {
+                                         Task { await model.openHelperApprovalSettings() }
+                                     }
+                                     : nil) {
+                        DSSecondaryButton(presentation.buttonTitle,
+                                          isEnabled: presentation.isButtonEnabled) {
+                            Task { await model.performHelperAction() }
                         }
                     }
                 }
@@ -145,13 +159,6 @@ private struct GeneralSettingsTab: View {
                 }
             }
         }
-    }
-
-    /// Показываем один и тот же диагноз, что и поповер: раньше настройки
-    /// уверяли «подключён · root», пока поповер писал «недоступен».
-    private var helperSubtitle: String {
-        let version = model.helperVersion.map { "v\($0) · " } ?? ""
-        return version + model.diagnosis.title
     }
 
     /// Сегмент-контрол работает индексами, а настройка — enum: 0 — реактивный,
@@ -409,11 +416,14 @@ private struct RuleGroupsTab: View {
         }
     }
 
+    /// Цвет по тону диагноза: «в работе» и «не установлен» — обычный, ожидание
+    /// одобрения и устаревший демон — warn, запрет CLI и ошибки — danger.
     private var statusColor: Color {
-        switch model.diagnosis {
-        case .ready: DSColor.ok
-        case .helperNotInstalled: DSColor.warn
-        case .littleSnitchNotAuthorized, .failing: DSColor.danger
+        switch model.diagnosis.tone {
+        case .normal: DSColor.textTertiary
+        case .warning: DSColor.warn
+        case .danger: DSColor.danger
+        case .ok: DSColor.ok
         }
     }
 

@@ -1,12 +1,22 @@
 import SwiftUI
 
+/// Ссылка в подписи строки настройки: стоит в одной строке с текстом
+/// подписи (макет «ждёт одобрения в Системных настройках · Открыть…»).
+struct DSSubtitleLink {
+    let title: String
+    let action: () -> Void
+}
+
 /// Строка настройки (§8.5): титул 13 + опциональная подпись 11, справа — произвольный
 /// контрол (тумблер/кнопка/поле/чип/моно) через слот-замыкание. Подпись скрывается,
-/// если не задана, — компонент один для всех строк настроек.
+/// если не задана, — компонент один для всех строк настроек. Тон подписи и
+/// ссылка после неё — для строк со статусом (helper).
 @MainActor
 struct DSSettingRow<Control: View>: View {
     let title: String
     var subtitle: String?
+    var subtitleTone: DSTextTone = .normal
+    var subtitleLink: DSSubtitleLink?
     @ViewBuilder var control: () -> Control
 
     var body: some View {
@@ -16,11 +26,17 @@ struct DSSettingRow<Control: View>: View {
                     .font(DSFont.windowTitle)
                     .foregroundStyle(DSColor.textPrimary)
                 if let subtitle {
-                    Text(subtitle)
-                        .font(DSFont.caption)
-                        .foregroundStyle(DSColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
+                    HStack(spacing: DSSpacing.xs) {
+                        Text(subtitle)
+                            .font(DSFont.caption)
+                            .foregroundStyle(subtitleTone.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                        if let subtitleLink {
+                            DSLinkButton(subtitleLink.title, font: DSFont.caption,
+                                         action: subtitleLink.action)
+                        }
+                    }
                 }
             }
             Spacer(minLength: DSSpacing.sm)
@@ -50,7 +66,21 @@ private struct DSSettingRowPreviewContent: View {
                 title: "Привилегированный helper",
                 subtitle: "v1.0 · подключён · root"
             ) {
-                DSSecondaryButton("Переустановить…") {}
+                DSSecondaryButton("Удалить…") {}
+            }
+            DSSettingRow(
+                title: "Привилегированный helper",
+                subtitle: "ждёт одобрения в Системных настройках ·",
+                subtitleTone: .warning,
+                subtitleLink: DSSubtitleLink(title: "Открыть Системные настройки…") {}
+            ) {
+                DSSecondaryButton("Удалить…") {}
+            }
+            DSSettingRow(
+                title: "Привилегированный helper",
+                subtitle: "переустанавливаем: ждём launchd… 12 с"
+            ) {
+                DSSecondaryButton("Переустанавливаем…", isEnabled: false) {}
             }
         }
         .padding(DSSpacing.lg)

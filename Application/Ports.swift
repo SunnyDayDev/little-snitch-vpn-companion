@@ -101,6 +101,52 @@ protocol RuleGroupGateway: Sendable {
     func helperVersion() async throws -> String
     func listRuleGroups() async throws -> [RuleGroup]
     func setRuleGroup(_ name: String, enabled: Bool) async throws
+    /// Сбросить соединение с helper: после переустановки демона старое
+    /// непригодно, а между опросами оно держит устаревший lookup.
+    func resetConnection() async
+}
+
+extension RuleGroupGateway {
+    func resetConnection() async {}
+}
+
+/// Статус регистрации демона в базе Background Task Management. Отражает
+/// базу, а не наличие job в launchd: после `register()` демон может
+/// подниматься ещё десятки секунд (замер 2026-09-09: 30 с).
+enum HelperRegistrationStatus: Hashable, Sendable {
+    case notRegistered
+    case requiresApproval
+    case enabled
+    case notFound
+}
+
+/// Регистратор привилегированного helper (`SMAppService.daemon` в
+/// Infrastructure). Ожидания и повторы — не здесь, а в `HelperLifecycle`.
+protocol HelperRegistrar: Sendable {
+    var status: HelperRegistrationStatus { get }
+    /// Версия helper, лежащего в бандле приложения, — для сравнения с
+    /// версией работающего демона.
+    var bundledVersion: String { get }
+    func register() throws
+    /// Завершается асинхронно на стороне системы: статус становится
+    /// `notRegistered` не сразу.
+    func unregister() async throws
+    /// Есть ли job демона в launchd. База BTM и launchd живут порознь:
+    /// после снятия регистрации статус уже `notRegistered`, а job ещё
+    /// выгружается, и регистрация в этот момент либо падает с EPERM, либо
+    /// остаётся мёртвой (замер 2026-09-10). `nil` — узнать нельзя.
+    func isJobLoaded() async -> Bool?
+    /// Открыть раздел Системных настроек, где helper одобряют.
+    func openApprovalSettings() async
+}
+
+/// Факты об установке helper, переживающие перезапуск. Решение пользователя
+/// удалить helper — действие, а не предпочтение, поэтому живёт отдельно от
+/// `AppSettings`: без него авто-восстановление вернуло бы демон при
+/// следующем запуске.
+protocol HelperInstallFacts: Sendable {
+    var removedByUser: Bool { get }
+    func setRemovedByUser(_ value: Bool)
 }
 
 /// Синхронизация failsafe-конфига helper (D5): dead-man's switch и закрытие

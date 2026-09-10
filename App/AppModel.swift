@@ -10,8 +10,12 @@ final class AppModel {
     private(set) var snapshot = MonitoringSnapshot()
     private(set) var settings: AppSettings
     private(set) var ruleGroups: [RuleGroup] = []
-    private(set) var helperStatus: HelperInstaller.Status
-    private(set) var helperVersion: String?
+    /// Зеркало состояния `HelperLifecycle`: экраны читают только его.
+    private(set) var helperState: HelperState = .notInstalled
+    /// Кнопка, подпись и ссылка строки helper — пересчитываются на каждом
+    /// событии актора, в том числе на тиках ожидания (счётчик секунд).
+    private(set) var helperPresentation = HelperPresentation.make(
+        state: .notInstalled, now: Instant(secondsSinceEpoch: 0))
     private(set) var groupsUpdatedAt: Date?
     private(set) var groupsError: String?
     private(set) var journalEvents: [JournalEvent] = []
@@ -23,21 +27,33 @@ final class AppModel {
     private(set) var notificationAuthorization: UserNotificationsPresenter.Authorization = .notRequested
     var isOnboardingPresented: Bool
 
+    var helperVersion: String? { helperState.runningVersion }
+
     /// Единый диагноз для поповера и настроек: раньше они показывали разное
     /// («подключён · root» и «недоступен» одновременно), потому что смотрели
-    /// в разные источники.
+    /// в разные источники. Теперь источник один — состояние helper, плюс
+    /// ошибка шлюза для случая, когда helper исправен, а Little Snitch не
+    /// пускает свой CLI.
     enum Diagnosis: Hashable {
         case ready
-        case helperNotInstalled(HelperInstaller.Status)
+        case helper(HelperPresentation)
         case littleSnitchNotAuthorized
         case failing(String)
 
         var title: String {
             switch self {
             case .ready: "подключён · root"
-            case .helperNotInstalled(let status): status.description
+            case .helper(let presentation): presentation.statusText
             case .littleSnitchNotAuthorized: "Little Snitch не пускает CLI"
             case .failing(let text): text
+            }
+        }
+
+        var tone: HelperPresentation.Tone {
+            switch self {
+            case .ready: .ok
+            case .helper(let presentation): presentation.tone
+            case .littleSnitchNotAuthorized, .failing: .danger
             }
         }
 
@@ -45,13 +61,12 @@ final class AppModel {
     }
 
     var diagnosis: Diagnosis {
-        if let gatewayError {
+        if let gatewayError, helperState.isResponsive {
             return gatewayError.isLittleSnitchAuthorization
                 ? .littleSnitchNotAuthorized
-                : (helperStatus.isReady ? .failing(gatewayError.message)
-                                        : .helperNotInstalled(helperStatus))
+                : .failing(gatewayError.message)
         }
-        guard helperStatus.isReady else { return .helperNotInstalled(helperStatus) }
+        guard helperState.isReady else { return .helper(helperPresentation) }
         return .ready
     }
 
@@ -59,19 +74,16 @@ final class AppModel {
     private let settingsStore: any SettingsStore
     private let journal: FileJournalStore
     private let gateway: HelperRuleGroupGateway
-    private let installer = HelperInstaller()
+    private let lifecycle: HelperLifecycle
     private let notifications: UserNotificationsPresenter
     private let loginItem = LoginItemController()
     /// Presence-соединение строгого режима (D5): его пропажу helper считает
     /// сигналом dead-man's switch.
     private let presence = HelperPresenceConnection()
     private var observerID: Int?
-    private var didReinstallStaleHelper = false
-    private var didRecoverSilentHelper = false
-    private var didRestoreHelper = false
+    private var helperObserver: Task<Void, Never>?
+    private var helperTicker: Task<Void, Never>?
     private var helperWatchdog: Task<Void, Never>?
-    private var didJournalHelperStatus = false
-    private var didPromptForApproval = false
     /// Последний syncFailsafe не дошёл до helper — вотчдог обязан повторить,
     /// иначе устаревший конфиг на диске сработает после выхода приложения.
     private var failsafeSyncPending = false
@@ -80,15 +92,16 @@ final class AppModel {
          settingsStore: any SettingsStore,
          journal: FileJournalStore,
          gateway: HelperRuleGroupGateway,
+         lifecycle: HelperLifecycle,
          notifications: UserNotificationsPresenter,
          settings: AppSettings) {
         self.coordinator = coordinator
         self.settingsStore = settingsStore
         self.journal = journal
         self.gateway = gateway
+        self.lifecycle = lifecycle
         self.notifications = notifications
         self.settings = settings
-        helperStatus = installer.status
         isOnboardingPresented = !OnboardingState.isCompleted
     }
 
@@ -101,11 +114,11 @@ final class AppModel {
         if settings.monitoringEnabled {
             await coordinator.start()
         }
-        await refreshHelperState()
-        await refreshRuleGroups()
-        // После проверки версии helper: устаревшему демону без setFailsafe
-        // конфиг слать бессмысленно, а к этому моменту он уже переустановлен.
-        await syncFailsafe()
+        observeHelperState()
+        // Старт helper не ждём: после замены бандла ожидание launchd занимает
+        // до минуты, а список групп и failsafe подхватит переход в «подключён».
+        let lifecycle = self.lifecycle
+        Task { await lifecycle.start() }
         await ensureNotificationAuthorization()
         await restoreLoginItemIfLost()
         startHelperWatchdog()
@@ -117,9 +130,16 @@ final class AppModel {
     /// эшелон (закрытие при выходе) работает и без helper, — но обязана
     /// ретраиться вотчдогом: устаревший strict-конфиг на диске helper иначе
     /// запер бы реактивного пользователя после выхода из приложения.
+    /// Пока идёт операция над регистрацией, конфиг не шлём: соединения
+    /// рвутся, а актор сам снял супервизию перед циклом.
     private func syncFailsafe() async {
+        guard !helperState.isWorking else { return }
         let strictActive = settings.protectionMode == .strict && !settings.observeOnly
         await presence.setActive(strictActive)
+        guard helperState.isResponsive else {
+            failsafeSyncPending = true
+            return
+        }
         do {
             try await gateway.syncFailsafe(FailsafeConfig(
                 strictActive: strictActive,
@@ -167,6 +187,7 @@ final class AppModel {
     /// Пока helper не отвечает, приложение переспрашивает его само: одобрение
     /// в Системных настройках и включение доступа CLI в Little Snitch иначе
     /// остались бы незамеченными до перезапуска или ручного «Обновить».
+    /// Во время операции актор ждёт сам — вотчдог ему не мешает.
     private func startHelperWatchdog() {
         guard helperWatchdog == nil else { return }
         helperWatchdog = Task { [weak self] in
@@ -174,9 +195,13 @@ final class AppModel {
                 try? await Task.sleep(for: .seconds(20))
                 guard let self, !Task.isCancelled else { return }
                 if self.failsafeSyncPending { await self.syncFailsafe() }
+                guard !self.helperState.isWorking else { continue }
                 guard !self.diagnosis.isReady || self.groupsError != nil else { continue }
-                await self.refreshHelperState()
-                await self.refreshRuleGroups()
+                await self.lifecycle.refresh()
+                // Зеркало обновляется потоком чуть позже — решаем по актору.
+                if await self.lifecycle.state.isResponsive {
+                    await self.refreshRuleGroups()
+                }
             }
         }
     }
@@ -259,18 +284,23 @@ final class AppModel {
 
     // MARK: - Группы и helper
 
+    /// Список групп запрашивается только у отвечающего демона: пока helper
+    /// не установлен, ждёт одобрения или переустанавливается, вкладка
+    /// показывает его состояние, а журнал не засоряется ошибками XPC.
     func refreshRuleGroups() async {
-        // Версию спрашиваем отдельно от списка групп: список может не
-        // разобраться, а устаревший демон надо переустановить именно тогда.
-        await checkHelperVersion()
+        guard !helperState.isWorking else { return }
+        guard helperState.isResponsive else {
+            groupsError = helperPresentation.statusText
+            gatewayError = nil
+            return
+        }
 
         let outcome = await SyncRuleGroups(gateway: gateway,
                                            journal: journal,
                                            clock: SystemClock()).run()
         switch outcome {
-        case .synced(let groups, let version):
+        case .synced(let groups, _):
             ruleGroups = groups
-            helperVersion = version ?? helperVersion
             groupsError = nil
             gatewayError = nil
             groupsUpdatedAt = Date()
@@ -286,192 +316,93 @@ final class AppModel {
             groupsError = error.message
             gatewayError = error
         }
-        await refreshHelperState()
     }
 
+    /// Переоценка состояния helper по фактам — при открытии окон.
     func refreshHelperState() async {
-        let previous = helperStatus
-        helperStatus = installer.status
-        if previous != helperStatus || !didJournalHelperStatus {
-            didJournalHelperStatus = true
-            await journal.append(JournalEvent(
-                time: await SystemClock().now(),
-                kind: .fact("статус helper: \(helperStatus)")))
-        }
-        await restoreHelperIfLost()
-        await promptForApprovalIfNeeded()
-    }
-
-    /// Пока macOS ждёт одобрения объекта входа, демон не запускается вовсе.
-    /// Сам пользователь про это не догадается, поэтому один раз за запуск
-    /// открываем нужный раздел настроек.
-    private func promptForApprovalIfNeeded() async {
-        guard helperStatus == .requiresApproval, !didPromptForApproval else { return }
-        didPromptForApproval = true
-        await journal.append(JournalEvent(
-            time: await SystemClock().now(),
-            kind: .warning("helper ждёт одобрения: Системные настройки → Основные "
-                + "→ Объекты входа → включить Little Snitch VPN Companion")))
-        installer.openApprovalSettings()
-    }
-
-    /// Онбординг пройден, а демона в системе нет — значит регистрация слетела
-    /// (например при обновлении приложения). Восстанавливаем её сами: согласие
-    /// пользователь уже давал, а без helper приложение бесполезно.
-    private func restoreHelperIfLost() async {
-        guard OnboardingState.isCompleted,
-              helperStatus == .notRegistered,
-              !didRestoreHelper else { return }
-        didRestoreHelper = true
-        await journal.append(JournalEvent(
-            time: await SystemClock().now(),
-            kind: .warning("регистрация helper потеряна — восстанавливаем")))
-        do {
-            try installer.register()
-        } catch {
-            groupsError = "не удалось восстановить helper: \(error.localizedDescription)"
-        }
-        helperStatus = installer.status
-    }
-
-    /// launchd держит демон в памяти, поэтому после обновления приложения в
-    /// системе может работать устаревший helper — с прежним кодом и прежними
-    /// ошибками. Замечаем расхождение версий и переустанавливаем демон один
-    /// раз за запуск.
-    private func checkHelperVersion() async {
-        guard helperStatus.isReady else { return }
-        guard let runningVersion = try? await gateway.helperVersion() else {
-            // Демон зарегистрирован, но не отвечает. Типичная причина —
-            // приложение пересобрано: launchd отказывается запускать бинарь,
-            // не совпадающий с подписью на момент регистрации (EX_CONFIG).
-            guard !didReinstallStaleHelper else { return }
-            await journal.append(JournalEvent(
-                time: await SystemClock().now(),
-                kind: .warning("helper не отвечает — обновляем регистрацию")))
-            await updateHelperRegistration()
-            return
-        }
-        helperVersion = runningVersion
-        guard !didReinstallStaleHelper,
-              runningVersion != installer.bundledHelperVersion else { return }
-        await journal.append(JournalEvent(
-            time: await SystemClock().now(),
-            kind: .warning("helper устарел (\(runningVersion) вместо "
-                + "\(installer.bundledHelperVersion)) — обновляем регистрацию")))
-        await updateHelperRegistration()
+        await lifecycle.refresh()
     }
 
     func installHelper() async {
-        do {
-            try installer.register()
-        } catch {
-            groupsError = "не удалось зарегистрировать helper: \(error.localizedDescription)"
-        }
-        await refreshHelperState()
-        if helperStatus == .requiresApproval {
-            installer.openApprovalSettings()
-        }
+        await lifecycle.install()
     }
 
+    /// Переустановка и удаление рвут XPC-соединения: presence снимаем
+    /// заранее, чтобы dead-man's switch не принял разрыв за смерть
+    /// приложения (D5). Обратно его включит syncFailsafe по «подключён».
     func reinstallHelper() async {
-        // Переустановка рвёт XPC-соединения: снимаем супервизию заранее, чтобы
-        // dead-man's switch не принял её за смерть приложения (D5).
-        try? await gateway.syncFailsafe(FailsafeConfig(strictActive: false, groups: []))
-        await gateway.invalidate()
-        do {
-            // Явное действие пользователя — сразу полный цикл: мягкая
-            // перерегистрация не лечит выгруженный вручную job.
-            try await installer.reinstall(forceFullCycle: true)
-        } catch {
-            groupsError = "не удалось переустановить helper: \(error.localizedDescription)"
-        }
-        await refreshHelperState()
-        // launchd поднимает демон по требованию, и первый вызов сразу после
-        // регистрации обычно не успевает: ждём, пока helper реально ответит,
-        // вместо того чтобы показывать ошибку и просить нажать ещё раз.
-        if await !waitForHelperToAnswer() {
-            await recoverSilentHelperIfNeeded()
-        }
-        await refreshRuleGroups()
-        await syncFailsafe()
+        await presence.setActive(false)
+        await lifecycle.reinstall()
     }
 
-    /// Перерегистрация демона — единственный способ подсунуть launchd новый
-    /// бинарь helper. Делается один раз за запуск: macOS может попросить
-    /// одобрить объект входа заново, и дёргать пользователя чаще нельзя.
-    private func updateHelperRegistration() async {
-        // Check-and-set до первого await: конкурентные вызовы (start и
-        // вотчдог) иначе оба проходят внешние guard'ы и чинят регистрацию
-        // дважды, сбрасывая одобрение, которое пользователь только что дал.
-        guard !didReinstallStaleHelper else { return }
-        didReinstallStaleHelper = true
-        // См. reinstallHelper(): супервизию снимаем до разрыва соединений.
-        try? await gateway.syncFailsafe(FailsafeConfig(strictActive: false, groups: []))
-        await gateway.invalidate()
-        do {
-            try await installer.reinstall()
-        } catch {
-            groupsError = "не удалось обновить helper: \(error.localizedDescription)"
-        }
-        await refreshHelperState()
-        if await !waitForHelperToAnswer() {
-            await recoverSilentHelperIfNeeded()
-        }
-        helperVersion = try? await gateway.helperVersion()
-        await syncFailsafe()
+    func removeHelper() async {
+        await presence.setActive(false)
+        await lifecycle.remove(
+            strictModeActive: settings.protectionMode == .strict && !settings.observeOnly)
+    }
 
-        // Если macOS ждёт одобрения — открываем нужный раздел настроек сразу:
-        // сам пользователь про этот шаг не догадается.
-        if helperStatus == .requiresApproval {
-            await journal.append(JournalEvent(
-                time: await SystemClock().now(),
-                kind: .warning("helper ждёт одобрения в Системных настройках "
-                    + "→ Основные → Объекты входа")))
-            installer.openApprovalSettings()
+    /// Кнопка строки helper делает то, что велит представление; пока кнопка
+    /// неактивна, действия нет.
+    func performHelperAction() async {
+        switch helperPresentation.action {
+        case .install: await installHelper()
+        case .reinstall: await reinstallHelper()
+        case .remove: await removeHelper()
+        case nil: break
         }
     }
 
-    /// Опрашивает helper, пока он не ответит (или не кончится терпение).
-    /// Нужен и после переустановки, и после одобрения в Системных настройках:
-    /// одобрение приложение никак иначе не заметит.
-    @discardableResult
-    private func waitForHelperToAnswer(attempts: Int = 5) async -> Bool {
-        for attempt in 1...attempts {
-            if (try? await gateway.helperVersion()) != nil {
-                gatewayError = nil
-                groupsError = nil
-                return true
+    func openHelperApprovalSettings() async {
+        await lifecycle.openApprovalSettings()
+    }
+
+    /// Единственный подписчик потока состояний актора: зеркалит состояние и
+    /// по переходу в «отвечает» подтягивает группы и failsafe-конфиг.
+    private func observeHelperState() {
+        guard helperObserver == nil else { return }
+        let lifecycle = self.lifecycle
+        helperObserver = Task { [weak self] in
+            for await state in await lifecycle.states() {
+                guard let self else { return }
+                await self.helperStateChanged(state)
             }
-            guard attempt < attempts else { return false }
-            try? await Task.sleep(for: .seconds(2))
-            await gateway.invalidate()
         }
-        return false
     }
 
-    /// Мягкая перерегистрация может «пройти» вхолостую: если job выгружали
-    /// вручную (launchctl bootout), база SMAppService всё ещё считает демон
-    /// зарегистрированным, `register()` возвращает успех, а слушателя в launchd
-    /// нет. Замечаем это по молчанию демона и делаем полный цикл
-    /// unregister → register.
-    private func recoverSilentHelperIfNeeded() async {
-        // Один раз за запуск и только когда демон числится включённым:
-        // повторные полные циклы сбрасывали бы одобрение быстрее, чем
-        // пользователь успевает его дать («ждёт одобрения» → тумблер →
-        // снова «ждёт одобрения»).
-        guard helperStatus.isReady, !didRecoverSilentHelper else { return }
-        didRecoverSilentHelper = true
-        await journal.append(JournalEvent(
-            time: await SystemClock().now(),
-            kind: .warning("helper зарегистрирован, но не отвечает — полная переустановка")))
-        do {
-            try await installer.reinstall(forceFullCycle: true)
-        } catch {
-            groupsError = "не удалось переустановить helper: \(error.localizedDescription)"
-            return
+    private func helperStateChanged(_ state: HelperState) async {
+        let wasResponsive = helperState.isResponsive
+        helperState = state
+        helperPresentation = HelperPresentation.make(state: state, now: await SystemClock().now())
+        if state.isWorking {
+            startHelperTicker()
+        } else {
+            helperTicker?.cancel()
+            helperTicker = nil
         }
-        await refreshHelperState()
-        await waitForHelperToAnswer()
+        if state.isResponsive {
+            if !wasResponsive {
+                await refreshRuleGroups()
+                await syncFailsafe()
+            }
+        } else if !state.isWorking {
+            groupsError = helperPresentation.statusText
+            gatewayError = nil
+        }
+    }
+
+    /// Счётчик «ждём launchd… N с» тикает раз в секунду: актор переиздаёт
+    /// состояние только на тиках опроса (1, 2, 3, 5 с), и без своего таймера
+    /// подпись выглядела застывшей (приёмка 2026-09-10).
+    private func startHelperTicker() {
+        guard helperTicker == nil else { return }
+        helperTicker = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled, self.helperState.isWorking else { return }
+                self.helperPresentation = HelperPresentation.make(
+                    state: self.helperState, now: await SystemClock().now())
+            }
+        }
     }
 
     // MARK: - Журнал

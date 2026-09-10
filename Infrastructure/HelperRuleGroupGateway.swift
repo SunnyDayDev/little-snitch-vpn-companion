@@ -66,6 +66,12 @@ actor HelperRuleGroupGateway: RuleGroupGateway, FailsafeSyncing {
         connection = nil
     }
 
+    /// Порт `RuleGroupGateway`: между опросами после регистрации соединение
+    /// держит устаревший lookup, и без сброса ответ демона остался бы незамечен.
+    func resetConnection() {
+        invalidate()
+    }
+
     // MARK: - Соединение
 
     private func makeConnection() -> NSXPCConnection {

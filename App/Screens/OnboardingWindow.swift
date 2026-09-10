@@ -30,6 +30,10 @@ struct OnboardingWindow: View {
             }
 
             VStack(spacing: DSMetrics.Onboarding.stepGap) {
+                // Карточка выводится из того же состояния helper, что и строка
+                // в настройках (спека helper-lifecycle): неактивная кнопка во
+                // время регистрации, статус со ссылкой при ожидании одобрения,
+                // закрытый шаг при подключённом helper.
                 DSStepCard(
                     number: 1,
                     title: "Разрешить привилегированный helper",
@@ -39,15 +43,9 @@ struct OnboardingWindow: View {
                         Объекты входа.
                         """,
                     isActive: step == 0,
-                    action: .button(title: helperButtonTitle) {
-                        Task {
-                            await model.installHelper()
-                            if model.helperStatus.isReady
-                                || model.helperStatus == .requiresApproval {
-                                step = max(step, 1)
-                            }
-                        }
-                    })
+                    isDone: model.helperState.isReady,
+                    status: helperStepStatus,
+                    action: helperStepAction)
 
                 DSStepCard(
                     number: 2,
@@ -92,6 +90,10 @@ struct OnboardingWindow: View {
         .frame(width: 560)
         .background(DSColor.bgWindow)
         .task { await model.refreshHelperState() }
+        // Одобрение замечает вотчдог, а не кнопка: шаг закрывается сам.
+        .onChange(of: model.helperState.isReady) { _, isReady in
+            if isReady { step = max(step, 1) }
+        }
         // В макете завершающей кнопки нет: онбординг закрывается окном.
         // Закрытие считается прохождением — иначе он всплывал бы каждый запуск.
         .onDisappear { model.finishOnboarding() }
@@ -118,11 +120,54 @@ struct OnboardingWindow: View {
         }
     }
 
-    private var helperButtonTitle: String {
-        switch model.helperStatus {
-        case .enabled: "Helper подключён"
-        case .requiresApproval: "Открыть Системные настройки…"
-        case .notRegistered, .notFound: "Установить helper…"
+    /// Строка статуса шага 1: только когда есть что сказать помимо описания.
+    private var helperStepStatus: DSStepCard.Status? {
+        let presentation = model.helperPresentation
+        switch model.helperState {
+        case .notInstalled:
+            return nil
+        case .awaitingApproval:
+            return DSStepCard.Status(
+                text: presentation.statusText + " ·",
+                tone: .warning,
+                link: DSSubtitleLink(title: HelperPresentation.approvalLinkTitle) {
+                    Task { await model.openHelperApprovalSettings() }
+                })
+        case .ready:
+            return DSStepCard.Status(text: presentation.statusText, tone: .ok)
+        case .notFound, .working, .stale, .silent:
+            return DSStepCard.Status(text: presentation.statusText,
+                                     tone: presentation.tone.dsTone)
+        }
+    }
+
+    /// Кнопка шага 1 по состоянию: первичная «Установить helper…» ведёт
+    /// вперёд, «Удалить…» при ожидании одобрения — вторичная, закрытый шаг
+    /// без кнопки.
+    private var helperStepAction: DSStepCard.Action? {
+        let presentation = model.helperPresentation
+        switch model.helperState {
+        case .notInstalled:
+            return .button(title: "Установить helper…") { runHelperAction() }
+        case .notFound, .working:
+            return .button(title: presentation.buttonTitle, isEnabled: false) {}
+        case .awaitingApproval:
+            return .secondaryButton(title: presentation.buttonTitle) { runHelperAction() }
+        case .stale, .silent:
+            return .button(title: presentation.buttonTitle) { runHelperAction() }
+        case .ready:
+            return nil
+        }
+    }
+
+    private func runHelperAction() {
+        Task {
+            await model.performHelperAction()
+            // Ждать одобрения на шаге 1 не обязательно: пользователь может
+            // создать группу, пока macOS ждёт включения объекта входа.
+            if model.helperState.isReady || model.helperState == .awaitingApproval {
+                step = max(step, 1)
+            }
         }
     }
 }

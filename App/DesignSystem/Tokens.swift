@@ -73,6 +73,25 @@ private extension NSColor {
     }
 }
 
+/// Тон вспомогательного текста: подписи строк и статусы окрашиваются по
+/// смыслу (макет «Настройки — helper: состояния»): предупреждение — warn,
+/// ошибка — danger, успех — ok, иначе вторичный цвет.
+enum DSTextTone {
+    case normal
+    case warning
+    case danger
+    case ok
+
+    var color: Color {
+        switch self {
+        case .normal: DSColor.textSecondary
+        case .warning: DSColor.warn
+        case .danger: DSColor.danger
+        case .ok: DSColor.ok
+        }
+    }
+}
+
 /// Типографика (§8.2): в макетах Inter/JetBrains Mono — макетная замена;
 /// в реализации системные SF Pro (`.system`) и SF Mono (`design: .monospaced`).
 enum DSFont {
@@ -144,6 +163,9 @@ enum DSMetrics {
     /// Точное значение §8.4 (кнопка первичная/вторичная): паддинг 6×14 — вертикаль вне
     /// общей шкалы отступов, поэтому вынесена отдельным токеном.
     static let buttonPaddingVertical: CGFloat = 6
+    /// Неактивная первичная кнопка — та же кнопка с прозрачностью 45 %
+    /// (атом «Кнопка первичная неактивная» в `design/app.pen`).
+    static let disabledPrimaryOpacity: Double = 0.45
 
     /// Поповер строки меню: у секций разные горизонтальные отступы
     /// (шапка и инфо 16, баннер 12, пункты меню 8) — снято с макета
