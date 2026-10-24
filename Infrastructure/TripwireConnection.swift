@@ -200,6 +200,18 @@ actor TripwireConnection {
                                       using: parameters)
         let gate = ContinuationGate<Void>()
 
+        do {
+            try await waitUntilReady(connection, gate: gate)
+        } catch {
+            // Неудавшееся соединение гасим сами: в ожидании Network.framework
+            // продолжал бы переподключаться в фоне мимо нашего backoff.
+            connection.cancel()
+            throw error
+        }
+        return connection
+    }
+
+    private func waitUntilReady(_ connection: NWConnection, gate: ContinuationGate<Void>) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 gate.set(continuation)
@@ -209,6 +221,12 @@ actor TripwireConnection {
                         gate.succeed(())
                     case .failed(let error):
                         gate.fail(TripwireError.connectionFailed(String(describing: error)))
+                    // Отказ прокси (Connection refused) Network.framework
+                    // отдаёт ожиданием, а не ошибкой (живая проверка
+                    // 2026-10-24): без этой ветки растяжка висела бы в
+                    // подключении без backoff и без сигнала обрыва.
+                    case .waiting(let error):
+                        gate.fail(TripwireError.connectionFailed("ожидание: \(error)"))
                     case .cancelled:
                         gate.fail(TripwireError.cancelled)
                     default:
@@ -220,8 +238,6 @@ actor TripwireConnection {
         } onCancel: {
             connection.cancel()
         }
-
-        return connection
     }
 
     private func heartbeatLoop(_ connection: NWConnection) async throws {

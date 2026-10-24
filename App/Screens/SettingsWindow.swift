@@ -583,7 +583,8 @@ private struct DetectorDetailView: View {
         return parts.joined(separator: " · ")
     }
 
-    /// Статус helper в футере: иконка + подпись, цвет по состоянию.
+    /// Статус helper в футере: иконка + подпись, цвет по состоянию. Иконка
+    /// стоит вплотную к тексту (макет), длинный диагноз переносится.
     private var helperStatusLabel: some View {
         HStack(spacing: DSSpacing.xs + 1) {
             Image(systemName: model.diagnosis.isReady
@@ -596,9 +597,9 @@ private struct DetectorDetailView: View {
                 .font(DSFont.caption)
                 .foregroundStyle(DSColor.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 320, alignment: .trailing)
                 .multilineTextAlignment(.trailing)
         }
+        .frame(maxWidth: 320, alignment: .trailing)
     }
 
     /// Цвет по тону диагноза: «в работе» и «не установлен» — обычный, ожидание

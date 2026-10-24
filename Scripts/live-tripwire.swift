@@ -1,20 +1,44 @@
 import Foundation
 
-// Проверка растяжки и монитора пути на живой машине (задача 4.3/4.4).
+// Проверка растяжки и монитора пути на живой машине (задача 4.3/4.4 исходного
+// change; задача 4.3 change add-multiple-detectors — растяжка через прокси).
 //   swiftc -swift-version 6 Domain/*.swift Application/Ports.swift \
-//     Application/AppSettings.swift Infrastructure/TripwireConnection.swift \
+//     Application/AppSettings.swift Helper/FailsafeConfig.swift \
+//     Infrastructure/ProxyRouting.swift Infrastructure/TripwireConnection.swift \
 //     Infrastructure/SystemPathMonitor.swift Scripts/live-tripwire.swift -o /tmp/live-tripwire
+// Параметры: --socks5 хост:порт | --http-connect хост:порт — растяжка через
+// прокси; --beacon URL — хост и путь heartbeat (по умолчанию маяк Cloudflare).
 
 @main
 struct LiveTripwire {
     static func main() async {
         let seconds = 14.0
         let heartbeat = 3.0
-        print("=== Растяжка: heartbeat \(Int(heartbeat)) с, наблюдаем \(Int(seconds)) с ===")
+        var proxy = ProxyConfig.direct
+        var beaconURL = BeaconConfig.cloudflare.primaryURL
+        var arguments = CommandLine.arguments.dropFirst()
+        while let flag = arguments.popFirst() {
+            switch flag {
+            case "--socks5", "--http-connect":
+                guard let raw = arguments.popFirst(),
+                      let address = ProxyConfig.parseAddress(raw) else { return usage() }
+                proxy = ProxyConfig(kind: flag == "--socks5" ? .socks5 : .httpConnect,
+                                    host: address.host, port: address.port)
+            case "--beacon":
+                guard let url = arguments.popFirst() else { return usage() }
+                beaconURL = url
+            default:
+                return usage()
+            }
+        }
+        guard let target = TripwireTarget(beaconURL: beaconURL) else { return usage() }
+        let route = proxy.isDirect ? "напрямую" : "через \(proxy.kind.rawValue) \(proxy.address)"
+        print("=== Растяжка к \(target.hostHeader)\(target.path) \(route): "
+            + "heartbeat \(Int(heartbeat)) с, наблюдаем \(Int(seconds)) с ===")
 
         let breaks = BreakCounter()
         let tripwire = TripwireConnection()
-        await tripwire.start(heartbeatSeconds: heartbeat) {
+        await tripwire.start(target: target, proxy: proxy, heartbeatSeconds: heartbeat) {
             Task { await breaks.record() }
         }
 
@@ -37,7 +61,11 @@ struct LiveTripwire {
         }
         print(count == 0
             ? "✓ Соединение держится, heartbeat проходит — edge не рвёт его по idle"
-            : "⚠ Были обрывы: \(count) — проверить дедлайн чтения и backoff")
+            : "⚠ Были обрывы: \(count) — проверить дедлайн чтения, backoff и прокси")
+    }
+
+    static func usage() {
+        print("Не разобраны параметры. См. шапку Scripts/live-tripwire.swift.")
     }
 }
 

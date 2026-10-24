@@ -114,26 +114,50 @@ private struct DetectorsBlock: View {
                 .textCase(.uppercase)
                 .foregroundStyle(DSColor.textTertiary)
             ForEach(detectors) { detector in
-                HStack(spacing: DSSpacing.sm) {
-                    let state = DSStatusIcon.State(detector.state)
-                    Image(systemName: detector.isEnabled
-                        ? state.symbolName : DSSymbol.resolve("shield.slash"))
-                        .font(.system(size: 12))
-                        .foregroundStyle(detector.isEnabled ? state.color : DSColor.muted)
-                        .frame(width: 14, height: 14)
-                    Text(detector.name)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(detector.isEnabled
-                            ? DSColor.textPrimary : DSColor.textSecondary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(DetectorPresentation.stateText(for: detector))
-                        .font(DSFont.caption)
-                        .foregroundStyle(DetectorPresentation.stateColor(for: detector))
-                        .lineLimit(1)
+                // В одну строку, как в макете, пока имя и egress помещаются;
+                // иначе состояние уходит под имя — ни имя, ни адрес не режутся
+                // ради другого.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: DSSpacing.sm) {
+                        icon(for: detector)
+                        name(of: detector).fixedSize()
+                        Spacer(minLength: DSSpacing.sm)
+                        state(of: detector).fixedSize()
+                    }
+                    HStack(alignment: .top, spacing: DSSpacing.sm) {
+                        icon(for: detector)
+                        VStack(alignment: .leading, spacing: 1) {
+                            name(of: detector)
+                            state(of: detector).truncationMode(.middle)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
             }
         }
+    }
+
+    private func icon(for detector: DetectorSnapshot) -> some View {
+        let state = DSStatusIcon.State(detector.state)
+        return Image(systemName: detector.isEnabled
+            ? state.symbolName : DSSymbol.resolve("shield.slash"))
+            .font(.system(size: 12))
+            .foregroundStyle(detector.isEnabled ? state.color : DSColor.muted)
+            .frame(width: 14, height: 14)
+    }
+
+    private func name(of detector: DetectorSnapshot) -> some View {
+        Text(detector.name)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(detector.isEnabled ? DSColor.textPrimary : DSColor.textSecondary)
+            .lineLimit(1)
+    }
+
+    private func state(of detector: DetectorSnapshot) -> some View {
+        Text(DetectorPresentation.stateText(for: detector))
+            .font(DSFont.caption)
+            .foregroundStyle(DetectorPresentation.stateColor(for: detector))
+            .lineLimit(1)
     }
 }
 
@@ -186,7 +210,7 @@ struct StatusPresentation {
     }
 
     var subtitle: String {
-        if hasNoDetectors { return "добавьте детектор в настройках — следить не за чем" }
+        if hasNoDetectors { return "включите или добавьте детектор в настройках — следить не за чем" }
         switch snapshot.state {
         case .protected:
             if isMulti {
