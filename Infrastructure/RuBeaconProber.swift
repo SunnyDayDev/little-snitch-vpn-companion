@@ -3,7 +3,8 @@ import os
 
 /// РУ-маяк (§4.4 SPEC.md): сервис в зоне `.ru` уходит мимо VPN благодаря
 /// РУ-сплиту и потому видит реальный IP текущей сети. Оба endpoint'а
-/// неофициальные — отсюда два кандидата и жёсткая валидация ответа.
+/// неофициальные — отсюда два кандидата и жёсткая валидация ответа. Прямой
+/// IP один на машину: запрос идёт напрямую, без прокси какого-либо детектора.
 struct RuBeaconProber: DirectIPProbing {
     /// 2ip.ru отдаёт голый text/plain только не-браузерному клиенту.
     private static let userAgent = "curl/8.7.1"
@@ -53,20 +54,13 @@ struct RuBeaconProber: DirectIPProbing {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let body = String(data: data, encoding: .utf8) else { return nil }
-            return Self.parse(body)
+            // yandex отдаёт JSON-строку `"<ip>"`, 2ip.ru — голый IP: тот же
+            // доменный разбор, что у маяков детекторов формата «голый IP».
+            return PlainIPParser.parse(body)
         } catch {
             logger.debug("РУ-маяк \(url.absoluteString, privacy: .public) недоступен")
             return nil
         }
     }
 
-    /// yandex отдаёт JSON-строку `"<ip>"`, 2ip.ru — голый IP. Всё, что после
-    /// разбора не является IP-адресом, отбрасывается.
-    static func parse(_ body: String) -> IPAddress? {
-        var text = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.hasPrefix("\""), text.hasSuffix("\""), text.count >= 2 {
-            text = String(text.dropFirst().dropLast())
-        }
-        return IPAddress(text)
-    }
 }

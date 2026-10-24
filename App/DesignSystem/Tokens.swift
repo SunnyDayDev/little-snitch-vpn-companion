@@ -175,6 +175,8 @@ enum DSMetrics {
         static let headerPadding = EdgeInsets(top: 14, leading: 16, bottom: 10, trailing: 16)
         static let bannerPadding = EdgeInsets(top: 0, leading: 12, bottom: 10, trailing: 12)
         static let infoPadding = EdgeInsets(top: 2, leading: 16, bottom: 10, trailing: 16)
+        /// Блок «Детекторы» между баннером и инфо-строками.
+        static let detectorsPadding = EdgeInsets(top: 0, leading: 16, bottom: 10, trailing: 16)
         static let infoRowGap: CGFloat = 7
         static let menuPadding = EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8)
         static let footerPadding = EdgeInsets(top: 4, leading: 8, bottom: 8, trailing: 8)

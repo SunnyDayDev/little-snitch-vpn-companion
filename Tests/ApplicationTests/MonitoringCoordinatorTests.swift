@@ -79,7 +79,7 @@ struct MonitoringCoordinatorTests {
         #expect(await harness.gateway.groups["VPN down"] == true)
         let transitions = await harness.notifications.presented.filter { $0.category == .transition }
         #expect(transitions.count == 1)
-        #expect(transitions.first?.title == "Утечка трафика")
+        #expect(transitions.first?.title == "Утечка трафика: Основной")
     }
 
     @Test("Восстановление снимает блок автоматически")
@@ -95,7 +95,7 @@ struct MonitoringCoordinatorTests {
         #expect(await harness.coordinator.snapshot.state == .protected)
         #expect(await harness.gateway.groups["VPN down"] == false)
         let titles = await harness.notifications.presented.map(\.title)
-        #expect(titles.contains("Защита восстановлена"))
+        #expect(titles.contains("Защита восстановлена: Основной"))
     }
 
     @Test("Маяк недоступен → Offline, группы не тронуты")
@@ -145,7 +145,7 @@ struct MonitoringCoordinatorTests {
         await harness.coordinator.pause()
 
         await harness.coordinator.runProbe(trigger: .scheduled)
-        await harness.coordinator.handleTripwireBreak()
+        await harness.coordinator.handleTripwireBreak(TestData.primaryID)
 
         #expect(await harness.coordinator.snapshot.state == .paused)
         #expect(await harness.gateway.operations.isEmpty)
@@ -276,7 +276,7 @@ struct MonitoringCoordinatorTests {
         let harness = makeHarness()
         await harness.beacon.setFallback(.body(TestData.protectedBody))
 
-        await harness.coordinator.handleTripwireBreak()
+        await harness.coordinator.handleTripwireBreak(TestData.primaryID)
 
         #expect(await harness.beacon.callCount == 1)
         #expect(await harness.coordinator.snapshot.state == .protected)
@@ -764,7 +764,7 @@ struct StrictCoordinatorTests {
         let harness = makeHarness(settings: TestData.settings(mode: .reactive))
         harness.settings.set(TestData.settings(mode: .strict))
 
-        await harness.coordinator.protectionModeChanged()
+        await harness.coordinator.settingsChanged()
 
         // Закрыто; одиночная проба без работающего детектора не запускалась —
         // её protected-вердикт открыл бы группы без дальнейшего надзора
@@ -1042,7 +1042,7 @@ struct StrictCoordinatorTests {
         #expect(await harness.gateway.groups["VPN down"] == false)
 
         harness.settings.set(TestData.settings(mode: .strict))
-        await harness.coordinator.protectionModeChanged()
+        await harness.coordinator.settingsChanged()
 
         #expect(await harness.gateway.groups["VPN down"] == true)
         await harness.coordinator.stop()
@@ -1057,7 +1057,7 @@ struct StrictCoordinatorTests {
         #expect(await harness.gateway.groups["VPN down"] == true)
 
         harness.settings.set(TestData.settings(mode: .reactive))
-        await harness.coordinator.protectionModeChanged()
+        await harness.coordinator.settingsChanged()
 
         #expect(await harness.gateway.groups["VPN down"] == false)
         #expect(await harness.coordinator.snapshot.state == .paused)
@@ -1072,7 +1072,7 @@ struct StrictCoordinatorTests {
         #expect(await harness.gateway.groups["VPN down"] == true)
 
         harness.settings.set(TestData.settings(mode: .reactive))
-        await harness.coordinator.protectionModeChanged()
+        await harness.coordinator.settingsChanged()
 
         #expect(await harness.gateway.groups["VPN down"] == true)
     }

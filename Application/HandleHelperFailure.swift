@@ -14,7 +14,9 @@ struct HandleHelperFailure: Sendable {
     let notifications: any NotificationPresenting
     let clock: any Clock
 
-    func run(state: EgressState, settings: AppSettings) async -> Outcome {
+    /// `detectorName` — детектор, подтвердивший утечку: эскалация одна на
+    /// эпизод недоступности helper, но уведомление называет виновника.
+    func run(state: EgressState, settings: AppSettings, detectorName: String? = nil) async -> Outcome {
         guard state == .leak else { return .skippedNotLeaking }
         guard settings.escalationEnabled else {
             await journalWarning("эскалация выключена настройкой — Wi-Fi не трогаем")
@@ -29,13 +31,15 @@ struct HandleHelperFailure: Sendable {
             try await wifi.turnWifiOff()
             await journal.append(JournalEvent(
                 time: await clock.now(),
+                detector: detectorName,
                 kind: .action("эскалация: Wi-Fi выключен"),
                 action: "networksetup -setairportpower off"))
             if settings.notifyErrors {
+                let who = detectorName.map { " детектором «\($0)»" } ?? ""
                 await notifications.present(AppNotification(
                     category: .error,
                     title: "Wi-Fi выключен",
-                    body: "Утечка подтверждена, а Little Snitch недоступен — сеть отключена, чтобы запрещённые приложения не вышли напрямую."))
+                    body: "Утечка подтверждена\(who), а Little Snitch недоступен — сеть отключена, чтобы запрещённые приложения не вышли напрямую."))
             }
             return .escalated
         } catch {

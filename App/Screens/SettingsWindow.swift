@@ -1,18 +1,19 @@
 import SwiftUI
 
-/// Окно настроек (§7.2–7.4 SPEC.md), 720 pt, вкладки в стиле System Settings.
+/// Окно настроек (§7.2–7.4 SPEC.md), 720 pt, вкладки в стиле System Settings:
+/// Общие и Детекторы. Детали детектора открываются на месте списка.
 @MainActor
 struct SettingsWindow: View {
     @Environment(AppModel.self) private var model
     @State private var selectedTab = 0
+    @State private var openedDetector: DetectorID?
 
     var body: some View {
         VStack(spacing: 0) {
-            // Иконки — по макету: слайдеры, активность, щит.
+            // Иконки — по макету: слайдеры и активность.
             DSTabBar(items: [
                 DSTabBar.Item(icon: "slider.horizontal.3", label: "Общие"),
-                DSTabBar.Item(icon: "waveform.path.ecg", label: "Детектор"),
-                DSTabBar.Item(icon: "shield", label: "Группы"),
+                DSTabBar.Item(icon: "waveform.path.ecg", label: "Детекторы"),
             ], selection: $selectedTab)
             .padding(DSMetrics.Settings.tabBarPadding)
             .background(DSColor.bgWindow)
@@ -22,9 +23,14 @@ struct SettingsWindow: View {
             ScrollView {
                 Group {
                     switch selectedTab {
-                    case 0: GeneralSettingsTab()
-                    case 1: DetectorSettingsTab()
-                    default: RuleGroupsTab()
+                    case 0:
+                        GeneralSettingsTab()
+                    default:
+                        if let id = openedDetector, model.settings.detector(id) != nil {
+                            DetectorDetailView(id: id) { openedDetector = $0 }
+                        } else {
+                            DetectorsTab { openedDetector = $0 }
+                        }
                     }
                 }
                 .padding(DSMetrics.Settings.contentPadding)
@@ -33,6 +39,7 @@ struct SettingsWindow: View {
         }
         .frame(width: DSMetrics.Settings.width, height: DSMetrics.Settings.height)
         .task { await model.refreshRuleGroups() }
+        .onChange(of: selectedTab) { _, _ in openedDetector = nil }
     }
 }
 
@@ -61,31 +68,6 @@ private struct GeneralSettingsTab: View {
                                  subtitle: "только уведомления — группы Little Snitch не трогать") {
                         DSToggle(isOn: binding(\.observeOnly))
                     }
-                }
-            }
-
-            SettingsCard(caption: "Режим защиты") {
-                SettingsRow(isFirst: true) {
-                    VStack(alignment: .leading, spacing: DSSpacing.sm) {
-                        DSSegmentedControl(
-                            titles: ["Блокировать при утечке", "Открывать только при VPN"],
-                            selection: modeSelection)
-                        Text(modeCaption)
-                            .font(DSFont.caption)
-                            .foregroundStyle(DSColor.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        // observeOnly побеждает строгий режим (D7): без этой
-                        // строки казалось бы, что трафик закрыт, хотя группы
-                        // не трогаются.
-                        if model.settings.observeOnly,
-                           model.settings.protectionMode == .strict {
-                            Text("режим наблюдения активен: группы не трогаются")
-                                .font(DSFont.caption)
-                                .foregroundStyle(DSColor.warn)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
@@ -161,41 +143,51 @@ private struct GeneralSettingsTab: View {
         }
     }
 
-    /// Сегмент-контрол работает индексами, а настройка — enum: 0 — реактивный,
-    /// 1 — строгий (порядок сегментов в макете).
-    private var modeSelection: Binding<Int> {
-        Binding(get: { model.settings.protectionMode == .strict ? 1 : 0 },
-                set: { newValue in
-                    model.update { $0.protectionMode = newValue == 1 ? .strict : .reactive }
-                })
-    }
-
-    private var modeCaption: String {
-        switch model.settings.protectionMode {
-        case .reactive:
-            "группы Little Snitch включаются только при подтверждённой утечке"
-        case .strict:
-            "трафик открыт, только пока VPN подтверждён. Смена сети, пауза, "
-                + "выход и сбой приложения закрывают группы до новой проверки"
-        }
-    }
-
     private func binding(_ keyPath: WritableKeyPath<AppSettings, Bool>) -> Binding<Bool> {
         Binding(get: { model.settings[keyPath: keyPath] },
                 set: { newValue in model.update { $0[keyPath: keyPath] = newValue } })
     }
 }
 
-// MARK: - Детектор
+// MARK: - Детекторы: список
 
 @MainActor
-private struct DetectorSettingsTab: View {
+private struct DetectorsTab: View {
     @Environment(AppModel.self) private var model
-    @State private var editingList: IPListEditor.Kind?
+    let open: (DetectorID) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: DSMetrics.Settings.cardRowGap) {
-            SettingsCard(caption: "Интервалы") {
+            VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                SettingsCard(caption: "Детекторы") {
+                    if model.settings.detectors.isEmpty {
+                        SettingsRow(isFirst: true) {
+                            Text("Детекторов нет — мониторинг работает вхолостую. "
+                                + "Добавьте детектор, чтобы следить за путём трафика.")
+                                .font(DSFont.secondary)
+                                .foregroundStyle(DSColor.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    ForEach(Array(model.settings.detectors.enumerated()), id: \.element.id) { index, config in
+                        if index > 0 { DSSeparator() }
+                        row(for: config)
+                    }
+                }
+                HStack(spacing: DSMetrics.Settings.tabBarGap) {
+                    DSSecondaryButton("Добавить детектор…") {
+                        open(model.addDetector())
+                    }
+                    Text(DetectorPresentation.counter(
+                        total: model.settings.detectors.count,
+                        enabled: model.settings.enabledDetectors.count))
+                        .font(DSFont.caption)
+                        .foregroundStyle(DSColor.textTertiary)
+                    Spacer()
+                }
+            }
+
+            SettingsCard(caption: "Общее для всех детекторов") {
                 SettingsRow(isFirst: true) {
                     DSSettingRow(title: "Heartbeat растяжки",
                                  subtitle: "крошечный запрос по постоянному TLS-соединению") {
@@ -214,61 +206,21 @@ private struct DetectorSettingsTab: View {
                     }
                 }
             }
-            Text("""
-                Смена сети всегда вызывает немедленную пробу. Утечка фиксируется только \
-                после подтверждения второй пробой через 2–3 секунды.
-                """)
-                .font(DSFont.caption)
-                .foregroundStyle(DSColor.textTertiary)
-
-            SettingsCard(caption: "Маяк") {
-                SettingsRow(isFirst: true) {
-                    DSSettingRow(title: "Основной") {
-                        Text("cloudflare.com/cdn-cgi/trace")
-                            .font(DSFont.mono)
-                            .foregroundStyle(DSColor.textSecondary)
-                    }
-                }
-                SettingsRow {
-                    DSSettingRow(title: "Резервный") {
-                        Text("1.1.1.1/cdn-cgi/trace")
-                            .font(DSFont.mono)
-                            .foregroundStyle(DSColor.textSecondary)
-                    }
-                }
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: DSIconSize.xs - 2))
+                Text("""
+                    Смена сети всегда вызывает немедленную пробу. Утечка фиксируется только \
+                    после подтверждения второй пробой через 2–3 секунды.
+                    """)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .font(DSFont.caption)
+            .foregroundStyle(DSColor.textTertiary)
+            .padding(.horizontal, 2)
 
-            SettingsCard(caption: "Ожидаемый egress") {
+            SettingsCard(caption: "Прямой IP сети") {
                 SettingsRow(isFirst: true) {
-                    DSSettingRow(title: "Критерий защиты") {
-                        DSStatusChip(text: "warp=on", style: .ok)
-                    }
-                }
-                SettingsRow {
-                    DSSettingRow(title: "Дополнительные IP",
-                                 subtitle: expectedSubtitle) {
-                        DSSecondaryButton("Изменить…") { editingList = .expected }
-                    }
-                }
-            }
-
-            SettingsCard(caption: "Запрещённый egress") {
-                SettingsRow(isFirst: true) {
-                    DSSettingRow(title: "Серверы инфраструктуры",
-                                 subtitle: forbiddenSubtitle) {
-                        HStack(spacing: DSSpacing.sm) {
-                            // Пустой список описан подписью строки — одинокий
-                            // «0» рядом с кнопкой только мешает.
-                            if !model.settings.forbiddenEgressIPs.isEmpty {
-                                Text("\(model.settings.forbiddenEgressIPs.count)")
-                                    .font(DSFont.valueLabel)
-                                    .foregroundStyle(DSColor.textSecondary)
-                            }
-                            DSSecondaryButton("Изменить…") { editingList = .forbidden }
-                        }
-                    }
-                }
-                SettingsRow {
                     DSSettingRow(title: "Прямой РУ-IP", subtitle: ruBeaconSubtitle) {
                         Text(model.snapshot.directRuIP?.text ?? "—")
                             .font(DSFont.mono)
@@ -276,10 +228,11 @@ private struct DetectorSettingsTab: View {
                     }
                 }
                 SettingsRow {
-                    DSSettingRow(title: "РУ-маяк") {
+                    DSSettingRow(title: "РУ-маяк",
+                                 subtitle: "домен обязан быть в зоне .ru — иначе запрос уйдёт через VPN") {
                         VStack(alignment: .trailing, spacing: 2) {
-                            Text(model.settings.ruBeaconURL)
-                            Text(model.settings.ruBeaconFallbackURL)
+                            Text(Self.withoutScheme(model.settings.ruBeaconURL))
+                            Text(Self.withoutScheme(model.settings.ruBeaconFallbackURL))
                         }
                         .font(DSFont.mono)
                         .foregroundStyle(DSColor.textSecondary)
@@ -287,31 +240,42 @@ private struct DetectorSettingsTab: View {
                 }
             }
         }
-        .sheet(item: $editingList) { kind in
-            IPListEditor(kind: kind)
+    }
+
+    private func row(for config: DetectorConfig) -> some View {
+        let detector = model.snapshot.detector(config.id)
+            ?? DetectorSnapshot(id: config.id, name: config.name, isEnabled: config.isEnabled,
+                                mode: config.protectionMode, proxy: config.proxy,
+                                groups: config.groups)
+        let chip = DetectorPresentation.chip(for: detector)
+        return DSDetectorRow(
+            state: DSStatusIcon.State(detector.state),
+            isEnabled: config.isEnabled,
+            name: config.name,
+            subtitle: DetectorPresentation.subtitle(proxy: config.proxy,
+                                                    mode: config.protectionMode,
+                                                    groups: config.groups),
+            chipText: chip.text,
+            chipStyle: chip.style) {
+            open(config.id)
         }
-    }
-
-    /// Список пуст по умолчанию: выходные узлы у каждого свои.
-    private var forbiddenSubtitle: String {
-        model.settings.forbiddenEgressIPs.isEmpty
-            ? "список пуст — добавь свои выходные узлы: egress с них означает, что цепочка вышла напрямую"
-            : "egress с этих IP = цепочка вышла напрямую, минуя WARP"
-    }
-
-    private var expectedSubtitle: String {
-        model.settings.expectedIPs.isEmpty
-            ? "EXPECTED_IPS — пусто; пригодится для egress своего WireGuard"
-            : model.settings.expectedIPs.joined(separator: ", ")
     }
 
     private var ruBeaconSubtitle: String {
+        let shared = "попадает в запрещённые всех детекторов"
         guard let updated = model.snapshot.directRuIPUpdated else {
-            return "автоопределение — ответа пока нет"
+            return "\(shared) · ответа пока нет"
         }
         let age = Date().timeIntervalSince1970 - updated.secondsSinceEpoch
         let host = URL(string: model.settings.ruBeaconURL)?.host() ?? "РУ-маяк"
-        return "\(host) · \(RelativeAge.text(age))"
+        return "\(shared) · \(host) · \(RelativeAge.text(age))"
+    }
+
+    static func withoutScheme(_ url: String) -> String {
+        for scheme in ["https://", "http://"] where url.lowercased().hasPrefix(scheme) {
+            return String(url.dropFirst(scheme.count))
+        }
+        return url
     }
 
     private func seconds(_ keyPath: WritableKeyPath<AppSettings, Double>) -> Binding<Int> {
@@ -320,27 +284,226 @@ private struct DetectorSettingsTab: View {
     }
 }
 
-// MARK: - Группы
+// MARK: - Детекторы: детали
 
 @MainActor
-private struct RuleGroupsTab: View {
+private struct DetectorDetailView: View {
     @Environment(AppModel.self) private var model
+    let id: DetectorID
+    /// `nil` — вернуться к списку; иначе открыть детали другого детектора.
+    let navigate: (DetectorID?) -> Void
+    @State private var editingList: IPListEditor.Kind?
+    @State private var isConfirmingDelete = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DSSpacing.md) {
-            Text("""
-                Какие rule groups Little Snitch включать при каждом состоянии. \
-                Сами группы и их правила создаются и редактируются в Little Snitch.
-                """)
-                .font(DSFont.body)
-                .foregroundStyle(DSColor.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+        if let config = model.settings.detector(id) {
+            content(config)
+        }
+    }
 
-            VStack(spacing: 0) {
+    private func content(_ config: DetectorConfig) -> some View {
+        VStack(alignment: .leading, spacing: DSMetrics.Settings.cardRowGap) {
+            header(config)
+
+            SettingsCard(caption: "Детектор") {
+                SettingsRow(isFirst: true) {
+                    DSSettingRow(title: "Название") {
+                        DSTextField(value: config.name,
+                                    validate: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) { name in
+                            model.updateDetector(id) { $0.name = name }
+                        }
+                    }
+                }
+                SettingsRow {
+                    VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                        Text("Режим защиты")
+                            .font(DSFont.windowTitle)
+                            .foregroundStyle(DSColor.textPrimary)
+                        DSSegmentedControl(
+                            titles: ["Блокировать при утечке", "Открывать только при VPN"],
+                            selection: modeSelection)
+                        Text(modeCaption(config.protectionMode))
+                            .font(DSFont.caption)
+                            .foregroundStyle(DSColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        // observeOnly побеждает строгий режим (D7): без этой
+                        // строки казалось бы, что трафик закрыт, хотя группы
+                        // не трогаются.
+                        if model.settings.observeOnly, config.protectionMode == .strict {
+                            Text("режим наблюдения активен: группы не трогаются")
+                                .font(DSFont.caption)
+                                .foregroundStyle(DSColor.warn)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            SettingsCard(caption: "Путь") {
+                SettingsRow(isFirst: true) {
+                    DSSettingRow(title: "Прокси", subtitle: "детектор ходит к маяку через этот прокси") {
+                        DSSegmentedControl(titles: ["Нет", "HTTP CONNECT", "SOCKS5"],
+                                           selection: proxySelection)
+                    }
+                }
+                SettingsRow {
+                    DSSettingRow(title: "Адрес прокси",
+                                 subtitle: "хост и порт · логин и пароль — не в первой версии") {
+                        DSTextField(value: config.proxy.address,
+                                    placeholder: "203.0.113.5:1080",
+                                    isMonospaced: true,
+                                    width: 200,
+                                    isEnabled: !config.proxy.isDirect,
+                                    validate: { ProxyConfig.parseAddress($0) != nil }) { raw in
+                            guard let parsed = ProxyConfig.parseAddress(raw) else { return }
+                            model.updateDetector(id) {
+                                $0.proxy.host = parsed.host
+                                $0.proxy.port = parsed.port
+                            }
+                        }
+                    }
+                }
+                SettingsRow {
+                    DSSettingRow(title: "Растяжка",
+                                 subtitle: config.proxy.isDirect
+                                     ? "постоянное соединение к маяку; обрыв — немедленная проба"
+                                     : "постоянное соединение к маяку через тот же прокси; обрыв — немедленная проба") {
+                        DSToggle(isOn: detectorBinding(\.tripwireEnabled))
+                    }
+                }
+            }
+
+            SettingsCard(caption: "Маяк") {
+                SettingsRow(isFirst: true) {
+                    DSSettingRow(title: "Основной") {
+                        DSTextField(value: config.beacon.primaryURL, isMonospaced: true, width: 300,
+                                    validate: BeaconConfig.isValidURL) { url in
+                            model.updateDetector(id) { $0.beacon.primaryURL = url }
+                        }
+                    }
+                }
+                SettingsRow {
+                    DSSettingRow(title: "Резервный",
+                                 subtitle: "тем же путём; пусто — без резервного маяка") {
+                        DSTextField(value: config.beacon.fallbackURL ?? "",
+                                    placeholder: "не задан",
+                                    isMonospaced: true, width: 300,
+                                    validate: { $0.isEmpty || BeaconConfig.isValidURL($0) }) { url in
+                            model.updateDetector(id) { $0.beacon.fallbackURL = url.isEmpty ? nil : url }
+                        }
+                    }
+                }
+                SettingsRow {
+                    DSSettingRow(title: "Формат ответа",
+                                 subtitle: "cdn-cgi/trace отдаёт любой домен за Cloudflare; "
+                                     + "голый IP — сервисы вида «какой у меня IP»") {
+                        DSSegmentedControl(titles: ["cdn-cgi/trace", "голый IP"],
+                                           selection: formatSelection)
+                    }
+                }
+            }
+
+            SettingsCard(caption: "Ожидаемый egress") {
+                SettingsRow(isFirst: true) {
+                    DSSettingRow(title: "warp=on считается защитой",
+                                 subtitle: warpSubtitle(config)) {
+                        DSToggle(isOn: detectorBinding(\.warpCountsAsProtection))
+                    }
+                }
+                SettingsRow {
+                    DSSettingRow(title: "Ожидаемые IP", subtitle: expectedSubtitle(config)) {
+                        countAndEdit(config.expectedIPs.count) { editingList = .expected }
+                    }
+                }
+            }
+
+            SettingsCard(caption: "Запрещённый egress") {
+                SettingsRow(isFirst: true) {
+                    DSSettingRow(title: "Запрещённые IP", subtitle: forbiddenSubtitle(config)) {
+                        countAndEdit(config.forbiddenEgressIPs.count) { editingList = .forbidden }
+                    }
+                }
+                SettingsRow {
+                    DSSettingRow(title: "Прямой IP сети",
+                                 subtitle: "общий для всех детекторов, приходит от РУ-маяка") {
+                        Text(model.snapshot.directRuIP?.text ?? "—")
+                            .font(DSFont.mono)
+                            .foregroundStyle(DSColor.textSecondary)
+                    }
+                }
+            }
+
+            groupsSection(config)
+
+            HStack(spacing: DSMetrics.Settings.tabBarGap) {
+                DSSecondaryButton("Удалить детектор…", titleColor: DSColor.danger) {
+                    isConfirmingDelete = true
+                }
+                Spacer()
+                DSSecondaryButton("Дублировать") {
+                    model.duplicateDetector(id)
+                    navigate(nil)
+                }
+            }
+            .padding(.top, DSSpacing.sm)
+        }
+        .sheet(item: $editingList) { kind in
+            IPListEditor(detector: id, kind: kind)
+        }
+        .confirmationDialog("Удалить детектор «\(config.name)»?",
+                            isPresented: $isConfirmingDelete) {
+            Button("Удалить", role: .destructive) {
+                model.deleteDetector(id)
+                navigate(nil)
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text(deleteConsequences(config))
+        }
+    }
+
+    // MARK: Шапка
+
+    private func header(_ config: DetectorConfig) -> some View {
+        let detector = model.snapshot.detector(id)
+            ?? DetectorSnapshot(id: id, name: config.name, isEnabled: config.isEnabled,
+                                mode: config.protectionMode, proxy: config.proxy,
+                                groups: config.groups)
+        let chip = DetectorPresentation.chip(for: detector)
+        return HStack(spacing: DSMetrics.Settings.tabBarGap) {
+            Button { navigate(nil) } label: {
+                HStack(spacing: 2) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Детекторы")
+                        .font(DSFont.secondary)
+                }
+                .foregroundStyle(DSColor.accent)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Text(config.name)
+                .font(DSFont.popoverTitle)
+                .foregroundStyle(DSColor.textPrimary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            DSStatusChip(text: chip.text, style: chip.style)
+            DSToggle(isOn: detectorBinding(\.isEnabled))
+        }
+        .padding(.horizontal, 2)
+        .padding(.bottom, DSSpacing.xs)
+    }
+
+    // MARK: Группы
+
+    private func groupsSection(_ config: DetectorConfig) -> some View {
+        VStack(alignment: .leading, spacing: DSSpacing.md) {
+            SettingsCard(caption: "Группы") {
                 HStack {
                     Text("Группа в Little Snitch")
                     Spacer()
-                    Text("Включать при утечке")
+                    Text("Включать этим детектором")
                 }
                 .font(DSFont.sectionCaption)
                 .textCase(.uppercase)
@@ -363,14 +526,25 @@ private struct RuleGroupsTab: View {
                     ForEach(Array(model.ruleGroups.enumerated()), id: \.element.name) { index, group in
                         if index > 0 { DSSeparator() }
                         DSRuleGroupRow(name: group.name,
-                                       subtitle: Self.subtitle(for: group),
-                                       isOn: binding(for: group.name))
+                                       subtitle: subtitle(for: group),
+                                       isOn: groupBinding(group.name))
                             .padding(.horizontal, DSMetrics.Table.horizontalPadding)
                             .padding(.vertical, DSMetrics.Table.rowVerticalPadding)
                     }
                 }
             }
-            .background(DSColor.bgCard, in: RoundedRectangle(cornerRadius: DSRadius.lg))
+
+            // Подсказка §13: дефолтной группы нет в LS — её нужно создать.
+            if config.id == .primary, config.groups.isEmpty, !model.ruleGroups.isEmpty,
+               !model.ruleGroups.contains(where: { $0.name == AppSettings.defaultLeakGroupName }) {
+                Text("""
+                    Создайте в Little Snitch группу «\(AppSettings.defaultLeakGroupName)» с запретами \
+                    для foreign-приложений и отметьте её здесь.
+                    """)
+                    .font(DSFont.caption)
+                    .foregroundStyle(DSColor.warn)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             // Предупреждение о самозапирании (§15): в строгом режиме включённая
             // группа с браузером не даст пройти captive portal и поднять VPN.
@@ -397,8 +571,19 @@ private struct RuleGroupsTab: View {
         }
     }
 
-    /// Статус helper в футере: иконка + подпись, цвет по состоянию (макет
-    /// «Настройки — Группы»).
+    /// Состояние в LS, подписка и «также в …»: у группы, входящей в другие
+    /// детекторы, причина её закрытости видна прямо здесь.
+    private func subtitle(for group: RuleGroup) -> String {
+        let state = group.enabled ? "включена в LS" : "выключена в LS"
+        var parts = [group.kind == .remote ? "подписка · \(state)" : state]
+        let others = model.settings.owners(of: group.name, excluding: id, enabledOnly: false)
+        if !others.isEmpty {
+            parts.append("также в " + others.map { "«\($0.name)»" }.joined(separator: ", "))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Статус helper в футере: иконка + подпись, цвет по состоянию.
     private var helperStatusLabel: some View {
         HStack(spacing: DSSpacing.xs + 1) {
             Image(systemName: model.diagnosis.isReady
@@ -427,16 +612,110 @@ private struct RuleGroupsTab: View {
         }
     }
 
-    private func binding(for name: String) -> Binding<Bool> {
-        Binding(get: { model.settings.leakGroups.contains(name) },
-                set: { model.toggleLeakGroup(name, isOn: $0) })
+    // MARK: Подписи
+
+    private func modeCaption(_ mode: ProtectionMode) -> String {
+        switch mode {
+        case .reactive:
+            "группы этого детектора включаются только при подтверждённой утечке; "
+                + "офлайн и проверка их не трогают"
+        case .strict:
+            "трафик по этому пути открыт только при подтверждённом VPN; пауза, "
+                + "выход и сбой приложения закрывают его группы"
+        }
     }
 
-    /// Подписка помечается словом: одноимённая локальная копия и подписка
-    /// иначе неотличимы, а включаются они по одному и тому же имени.
-    private static func subtitle(for group: RuleGroup) -> String {
-        let state = group.enabled ? "включена в LS" : "выключена в LS"
-        return group.kind == .remote ? "подписка · \(state)" : state
+    private func warpSubtitle(_ config: DetectorConfig) -> String {
+        config.warpCountsAsProtection
+            ? "ответ маяка с warp=on — признак защиты"
+            : "выключено: защиту определяют только ожидаемые IP — warp=on означал бы чужой путь"
+    }
+
+    private func expectedSubtitle(_ config: DetectorConfig) -> String {
+        config.expectedIPs.isEmpty
+            ? "EXPECTED_IPS — пусто; пригодится для egress своего WireGuard или выхода прокси"
+            : config.expectedIPs.joined(separator: ", ")
+    }
+
+    /// Список пуст по умолчанию: выходные узлы у каждого свои.
+    private func forbiddenSubtitle(_ config: DetectorConfig) -> String {
+        config.forbiddenEgressIPs.isEmpty
+            ? "список пуст — добавь свои выходные узлы или сам прокси-сервер: egress с них означает, что путь вышел напрямую"
+            : config.forbiddenEgressIPs.joined(separator: ", ")
+                + " — egress с этих IP значит, что путь вышел напрямую"
+    }
+
+    /// Последствия удаления для групп: эксклюзивные откроются, общие
+    /// останутся под управлением других детекторов.
+    private func deleteConsequences(_ config: DetectorConfig) -> String {
+        let exclusive = config.groups.filter { model.settings.owners(of: $0, excluding: id).isEmpty }
+        let shared = config.groups.filter { !model.settings.owners(of: $0, excluding: id).isEmpty }
+        var lines: [String] = []
+        if config.groups.isEmpty {
+            lines.append("У детектора нет групп — Little Snitch не изменится.")
+        }
+        if !exclusive.isEmpty, config.isEnabled {
+            lines.append("Группы \(exclusive.map { "«\($0)»" }.joined(separator: ", ")) будут выключены: "
+                + "трафик по ним откроется.")
+        }
+        if !shared.isEmpty {
+            lines.append("Группы \(shared.map { "«\($0)»" }.joined(separator: ", ")) останутся "
+                + "под управлением других детекторов.")
+        }
+        return lines.joined(separator: " ")
+    }
+
+    // MARK: Привязки
+
+    private func countAndEdit(_ count: Int, action: @escaping () -> Void) -> some View {
+        HStack(spacing: DSSpacing.sm) {
+            // Пустой список описан подписью строки — одинокий «0» рядом с
+            // кнопкой только мешает.
+            if count > 0 {
+                Text("\(count)")
+                    .font(DSFont.valueLabel)
+                    .foregroundStyle(DSColor.textSecondary)
+            }
+            DSSecondaryButton("Изменить…", action: action)
+        }
+    }
+
+    private func detectorBinding(_ keyPath: WritableKeyPath<DetectorConfig, Bool>) -> Binding<Bool> {
+        Binding(get: { model.settings.detector(id)?[keyPath: keyPath] ?? false },
+                set: { newValue in model.updateDetector(id) { $0[keyPath: keyPath] = newValue } })
+    }
+
+    private func groupBinding(_ name: String) -> Binding<Bool> {
+        Binding(get: { model.settings.detector(id)?.groups.contains(name) ?? false },
+                set: { model.toggleGroup(name, in: id, isOn: $0) })
+    }
+
+    /// Сегмент-контрол работает индексами, а настройка — enum: 0 — реактивный,
+    /// 1 — строгий (порядок сегментов в макете).
+    private var modeSelection: Binding<Int> {
+        Binding(get: { model.settings.detector(id)?.protectionMode == .strict ? 1 : 0 },
+                set: { newValue in
+                    model.updateDetector(id) { $0.protectionMode = newValue == 1 ? .strict : .reactive }
+                })
+    }
+
+    private static let proxyKinds: [ProxyConfig.Kind] = [.direct, .httpConnect, .socks5]
+
+    private var proxySelection: Binding<Int> {
+        Binding(get: {
+                    let kind = model.settings.detector(id)?.proxy.kind ?? .direct
+                    return Self.proxyKinds.firstIndex(of: kind) ?? 0
+                },
+                set: { newValue in
+                    model.updateDetector(id) { $0.proxy.kind = Self.proxyKinds[newValue] }
+                })
+    }
+
+    private var formatSelection: Binding<Int> {
+        Binding(get: { model.settings.detector(id)?.beacon.format == .plainIP ? 1 : 0 },
+                set: { newValue in
+                    model.updateDetector(id) { $0.beacon.format = newValue == 1 ? .plainIP : .cdnCgiTrace }
+                })
     }
 }
 
@@ -478,8 +757,8 @@ private struct SettingsRow<Content: View>: View {
     }
 }
 
-/// Редактор списка IP: строка на адрес, невалидные подсвечиваются и
-/// не сохраняются.
+/// Редактор списка IP детектора: строка на адрес, невалидные подсвечиваются
+/// и не сохраняются.
 @MainActor
 struct IPListEditor: View {
     enum Kind: String, Identifiable {
@@ -488,14 +767,15 @@ struct IPListEditor: View {
 
         var title: String {
             switch self {
-            case .expected: "Дополнительные ожидаемые IP"
-            case .forbidden: "Серверы инфраструктуры (запрещённый egress)"
+            case .expected: "Ожидаемые IP (защищённый egress)"
+            case .forbidden: "Запрещённые IP (серверы инфраструктуры, сам прокси)"
             }
         }
     }
 
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    let detector: DetectorID
     let kind: Kind
     @State private var text = ""
 
@@ -504,7 +784,8 @@ struct IPListEditor: View {
             Text(kind.title)
                 .font(DSFont.windowTitle)
                 .foregroundStyle(DSColor.textPrimary)
-            Text("По одному адресу в строке. Строки после # — комментарии.")
+            Text("Детектор «\(model.settings.detector(detector)?.name ?? "")». "
+                + "По одному адресу в строке. Строки после # — комментарии.")
                 .font(DSFont.caption)
                 .foregroundStyle(DSColor.textTertiary)
 
@@ -536,9 +817,10 @@ struct IPListEditor: View {
     }
 
     private var currentList: [String] {
-        switch kind {
-        case .expected: model.settings.expectedIPs
-        case .forbidden: model.settings.forbiddenEgressIPs
+        guard let config = model.settings.detector(detector) else { return [] }
+        return switch kind {
+        case .expected: config.expectedIPs
+        case .forbidden: config.forbiddenEgressIPs
         }
     }
 
@@ -557,10 +839,10 @@ struct IPListEditor: View {
 
     private func save() {
         let valid = parsedLines.filter(\.isValid).map(\.raw)
-        model.update { settings in
+        model.updateDetector(detector) { config in
             switch kind {
-            case .expected: settings.expectedIPs = valid
-            case .forbidden: settings.forbiddenEgressIPs = valid
+            case .expected: config.expectedIPs = valid
+            case .forbidden: config.forbiddenEgressIPs = valid
             }
         }
     }

@@ -87,6 +87,9 @@ final class AppModel {
     /// Последний syncFailsafe не дошёл до helper — вотчдог обязан повторить,
     /// иначе устаревший конфиг на диске сработает после выхода приложения.
     private var failsafeSyncPending = false
+    /// Итог подготовки детекторов при запуске — записывается в журнал на
+    /// старте один раз.
+    private var detectorsOutcome: DetectorsLoadOutcome?
 
     init(coordinator: MonitoringCoordinator,
          settingsStore: any SettingsStore,
@@ -94,7 +97,8 @@ final class AppModel {
          gateway: HelperRuleGroupGateway,
          lifecycle: HelperLifecycle,
          notifications: UserNotificationsPresenter,
-         settings: AppSettings) {
+         settings: AppSettings,
+         detectorsOutcome: DetectorsLoadOutcome? = nil) {
         self.coordinator = coordinator
         self.settingsStore = settingsStore
         self.journal = journal
@@ -102,6 +106,7 @@ final class AppModel {
         self.lifecycle = lifecycle
         self.notifications = notifications
         self.settings = settings
+        self.detectorsOutcome = detectorsOutcome
         isOnboardingPresented = !OnboardingState.isCompleted
     }
 
@@ -111,6 +116,7 @@ final class AppModel {
         observerID = await coordinator.observe { [weak self] snapshot in
             Task { @MainActor in self?.snapshot = snapshot }
         }
+        await journalDetectorsOutcome()
         if settings.monitoringEnabled {
             await coordinator.start()
         }
@@ -124,8 +130,40 @@ final class AppModel {
         startHelperWatchdog()
     }
 
+    /// Миграция и повреждение массива детекторов видны в журнале: иначе
+    /// пользователь не узнал бы, из чего собран «Основной» и почему его
+    /// детекторы пропали.
+    private func journalDetectorsOutcome() async {
+        guard let outcome = detectorsOutcome else { return }
+        detectorsOutcome = nil
+        let now = await SystemClock().now()
+        switch outcome {
+        case .stored, .freshInstall:
+            return
+        case .migrated(let primary):
+            await journal.append(JournalEvent(
+                time: now, detector: primary.name,
+                kind: .fact("настройки перенесены в детектор «\(primary.name)»: "
+                    + "режим \(primary.protectionMode == .strict ? "строгий" : "реактивный"), "
+                    + "ожидаемые IP: \(Self.list(primary.expectedIPs)), "
+                    + "запрещённые IP: \(Self.list(primary.forbiddenEgressIPs)), "
+                    + "группы: \(Self.list(primary.groups)); прежние ключи не тронуты")))
+        case .corrupted(let reason):
+            await journal.append(JournalEvent(
+                time: now,
+                kind: .warning("массив детекторов в настройках не читается (\(reason)) — "
+                    + "работает детектор «\(DetectorConfig.primaryName)» по умолчанию; "
+                    + "значение не перезаписано до первого изменения настроек")))
+        }
+    }
+
+    private static func list(_ values: [String]) -> String {
+        values.isEmpty ? "—" : values.joined(separator: ", ")
+    }
+
     /// Синхронизация failsafe-страховки helper (D5): активна только когда
-    /// строгий режим включён и не перекрыт observeOnly. Presence-соединение
+    /// есть включённый строгий детектор и observeOnly его не перекрывает;
+    /// группы — объединение групп строгих детекторов. Presence-соединение
     /// держится ровно при активной страховке. Ошибка не фатальна — первый
     /// эшелон (закрытие при выходе) работает и без helper, — но обязана
     /// ретраиться вотчдогом: устаревший strict-конфиг на диске helper иначе
@@ -134,16 +172,14 @@ final class AppModel {
     /// рвутся, а актор сам снял супервизию перед циклом.
     private func syncFailsafe() async {
         guard !helperState.isWorking else { return }
-        let strictActive = settings.protectionMode == .strict && !settings.observeOnly
-        await presence.setActive(strictActive)
+        let config = settings.failsafeConfig
+        await presence.setActive(config.strictActive)
         guard helperState.isResponsive else {
             failsafeSyncPending = true
             return
         }
         do {
-            try await gateway.syncFailsafe(FailsafeConfig(
-                strictActive: strictActive,
-                groups: settings.leakGroups))
+            try await gateway.syncFailsafe(config)
             failsafeSyncPending = false
         } catch {
             // Предупреждаем один раз за эпизод: вотчдог ретраит каждые 20 с,
@@ -220,8 +256,8 @@ final class AppModel {
         }
     }
 
-    /// Завершение приложения (⌘Q, logout, выключение): в строгом режиме
-    /// координатор закрывает группы перед смертью процесса.
+    /// Завершение приложения (⌘Q, logout, выключение): координатор закрывает
+    /// группы строгих детекторов перед смертью процесса.
     func prepareForTermination() async {
         await coordinator.prepareForTermination()
     }
@@ -236,35 +272,29 @@ final class AppModel {
         settingsStore.save(settings)
 
         let monitoringToggled = previous.monitoringEnabled != settings.monitoringEnabled
-        let mappingChanged = previous.leakGroups != settings.leakGroups
-        let modeChanged = previous.protectionMode != settings.protectionMode
-        let observeToggled = previous.observeOnly != settings.observeOnly
-        let failsafeChanged = modeChanged || mappingChanged || observeToggled
+        // Режим, группы и признак «включён» строгих детекторов, их добавление
+        // и удаление, observeOnly — всё это сводится к failsafe-конфигу.
+        let failsafeChanged = previous.failsafeConfig != settings.failsafeConfig
+        let settings = settings
         Task {
-            await coordinator.settingsChanged()
             if failsafeChanged {
-                // Страховка helper узнаёт о новом режиме до переходного
-                // reconcile: иначе есть окно, где режим уже строгий, а
+                // Страховка helper узнаёт о новом объединении до переходного
+                // reconcile: иначе есть окно, где детектор уже строгий, а
                 // dead-man's switch ещё не взведён.
                 await syncFailsafe()
             }
-            if modeChanged {
-                // Переходный reconcile выполняет координатор: строгий закрывает
-                // всё, кроме Protected, реактивный открывает всё, кроме Leak.
-                await coordinator.protectionModeChanged()
-            }
+            // Дифф детекторов делает координатор: переходные reconcile при
+            // смене режима, выключении и удалении, перезапуск слоёв при смене
+            // маяка, прокси или растяжки, старт включённых.
+            await coordinator.settingsChanged()
             if monitoringToggled {
-                // Выключенный мониторинг — та же остановка детектора, что и
+                // Выключенный мониторинг — та же остановка детекторов, что и
                 // пауза: иначе поповер продолжал бы показывать «Защищено».
                 if settings.monitoringEnabled {
                     await coordinator.resume()
                 } else {
                     await coordinator.pause()
                 }
-            } else if mappingChanged || observeToggled, !modeChanged {
-                // Снятие observeOnly при строгом режиме обязано закрыть
-                // немедленно, а не ближайшей плановой пробой через минуту.
-                await coordinator.reconcileNow()
             }
         }
         // Регистрация login item — системное изменение, поэтому только когда
@@ -274,12 +304,48 @@ final class AppModel {
         }
     }
 
-    func toggleLeakGroup(_ name: String, isOn: Bool) {
+    // MARK: - Детекторы
+
+    func updateDetector(_ id: DetectorID, _ transform: (inout DetectorConfig) -> Void) {
         update { settings in
-            var groups = Set(settings.leakGroups)
-            if isOn { groups.insert(name) } else { groups.remove(name) }
-            settings.leakGroups = groups.sorted()
+            guard let index = settings.detectors.firstIndex(where: { $0.id == id }) else { return }
+            transform(&settings.detectors[index])
         }
+    }
+
+    func toggleGroup(_ name: String, in id: DetectorID, isOn: Bool) {
+        updateDetector(id) { detector in
+            var groups = Set(detector.groups)
+            if isOn { groups.insert(name) } else { groups.remove(name) }
+            detector.groups = groups.sorted()
+        }
+    }
+
+    /// «Добавить детектор…»: включённый детектор с дефолтами «Основного»,
+    /// без групп. Возвращает идентификатор — экран сразу открывает детали.
+    @discardableResult
+    func addDetector() -> DetectorID {
+        let id = DetectorID(UUID().uuidString)
+        update { $0.detectors.append(.newDetector(id: id)) }
+        return id
+    }
+
+    /// «Дублировать»: выключенная копия рядом с оригиналом.
+    @discardableResult
+    func duplicateDetector(_ id: DetectorID) -> DetectorID? {
+        guard let original = settings.detector(id) else { return nil }
+        let copyID = DetectorID(UUID().uuidString)
+        update { settings in
+            let index = settings.detectors.firstIndex { $0.id == id } ?? settings.detectors.count - 1
+            settings.detectors.insert(original.duplicated(id: copyID), at: index + 1)
+        }
+        return copyID
+    }
+
+    /// Удаление после подтверждения: координатор открывает эксклюзивные
+    /// группы детектора переходным reconcile (D9 design.md).
+    func deleteDetector(_ id: DetectorID) {
+        update { $0.detectors.removeAll { $0.id == id } }
     }
 
     // MARK: - Группы и helper
@@ -304,13 +370,14 @@ final class AppModel {
             groupsError = nil
             gatewayError = nil
             groupsUpdatedAt = Date()
-            // Дефолтная группа §13 подставляется один раз: иначе она молча
-            // возвращалась бы каждый раз, когда пользователь снял чекбокс.
+            // Дефолтная группа §13 подставляется в «Основной» один раз:
+            // иначе она молча возвращалась бы каждый раз, когда пользователь
+            // снял чекбокс.
             if !OnboardingState.isDefaultGroupApplied,
-               settings.leakGroups.isEmpty,
+               settings.detector(.primary)?.groups.isEmpty == true,
                groups.contains(where: { $0.name == AppSettings.defaultLeakGroupName }) {
                 OnboardingState.markDefaultGroupApplied()
-                update { $0.leakGroups = [AppSettings.defaultLeakGroupName] }
+                updateDetector(.primary) { $0.groups = [AppSettings.defaultLeakGroupName] }
             }
         case .failed(let error):
             groupsError = error.message
@@ -337,8 +404,7 @@ final class AppModel {
 
     func removeHelper() async {
         await presence.setActive(false)
-        await lifecycle.remove(
-            strictModeActive: settings.protectionMode == .strict && !settings.observeOnly)
+        await lifecycle.remove(strictModeActive: settings.strictActive)
     }
 
     /// Кнопка строки helper делает то, что велит представление; пока кнопка

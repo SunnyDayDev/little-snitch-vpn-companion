@@ -6,7 +6,8 @@ enum WarpStatus: String, Codable, Hashable {
     var indicatesWarp: Bool { self == .on || self == .plus }
 }
 
-/// Разобранный ответ маяка `/cdn-cgi/trace`.
+/// Разобранный ответ маяка: `/cdn-cgi/trace` или голый IP (тогда `warp`
+/// неизвестен, а `colo` и `loc` пусты).
 struct BeaconTrace: Hashable, Codable {
     let ip: IPAddress
     let warp: WarpStatus
@@ -35,5 +36,32 @@ enum TraceParser {
         guard let rawIP = fields["ip"], let ip = IPAddress(rawIP) else { return nil }
         let warp = fields["warp"].flatMap(WarpStatus.init(rawValue:)) ?? .unknown
         return BeaconTrace(ip: ip, warp: warp, colo: fields["colo"], loc: fields["loc"])
+    }
+}
+
+/// Разбор «голого IP»: тело — адрес, допустима JSON-строка `"<ip>"`. Так
+/// отвечают РУ-маяк (yandex — JSON-строкой, 2ip.ru — text/plain) и маяки
+/// детекторов формата `plainIP`. Всё, что после разбора не адрес, — `nil`.
+enum PlainIPParser {
+    static func parse(_ body: String) -> IPAddress? {
+        var text = Substring(body)
+        text = text.drop(while: \.isWhitespace)
+        while let last = text.last, last.isWhitespace { text = text.dropLast() }
+        if text.count >= 2, text.hasPrefix("\""), text.hasSuffix("\"") {
+            text = text.dropFirst().dropLast()
+        }
+        return IPAddress(String(text))
+    }
+}
+
+/// Ответ маяка детектора по его формату (D4 design.md).
+enum BeaconResponseParser {
+    static func parse(_ body: String, format: BeaconFormat) -> BeaconTrace? {
+        switch format {
+        case .cdnCgiTrace:
+            TraceParser.parse(body)
+        case .plainIP:
+            PlainIPParser.parse(body).map { BeaconTrace(ip: $0, warp: .unknown) }
+        }
     }
 }

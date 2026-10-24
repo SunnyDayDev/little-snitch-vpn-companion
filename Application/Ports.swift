@@ -10,8 +10,10 @@ enum BeaconFetch: Hashable, Sendable {
 }
 
 protocol BeaconProbing: Sendable {
-    /// Свежая проба новым соединением (ephemeral): основной маяк, при сбое — резервный.
-    func fetchTrace(timeout: Double) async -> BeaconFetch
+    /// Свежая проба маяка детектора новым соединением (ephemeral) через его
+    /// прокси: основной маяк, при сбое — резервный тем же путём. Отказ
+    /// прокси — `.offline`, не утечка.
+    func fetchTrace(for detector: DetectorConfig, timeout: Double) async -> BeaconFetch
 }
 
 protocol DirectIPProbing: Sendable {
@@ -21,16 +23,20 @@ protocol DirectIPProbing: Sendable {
 }
 
 protocol TripwireMonitoring: Sendable {
-    /// Постоянное TLS-соединение с heartbeat. `onBreak` вызывается при обрыве
-    /// или истечении дедлайна чтения.
-    func start(heartbeatSeconds: Double, onBreak: @escaping @Sendable () -> Void) async
-    func stop() async
-    /// Смена сети — повод переустановиться немедленно, не досиживая backoff.
+    /// Растяжка детектора: постоянное TLS-соединение к хосту его основного
+    /// маяка через его прокси, heartbeat — `GET <путь маяка>`. `onBreak`
+    /// вызывается при обрыве или истечении дедлайна чтения. Повторный старт
+    /// того же детектора перезапускает его растяжку.
+    func start(_ id: DetectorID,
+               beaconURL: String,
+               proxy: ProxyConfig,
+               heartbeatSeconds: Double,
+               onBreak: @escaping @Sendable () -> Void) async
+    func stop(_ id: DetectorID) async
+    func stopAll() async
+    /// Смена сети — повод переустановить все растяжки немедленно, не
+    /// досиживая backoff.
     func networkPathChanged() async
-}
-
-extension TripwireMonitoring {
-    func networkPathChanged() async {}
 }
 
 protocol PathMonitoring: Sendable {

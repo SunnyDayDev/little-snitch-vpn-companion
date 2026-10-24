@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Testing
 
 @Suite("FileJournalStore")
@@ -89,6 +90,47 @@ struct FileJournalStoreTests {
         #expect(text.contains("включена «VPN down»"))
     }
 
+    @Test("Поле «детектор» пишется в JSONL и показывается префиксом")
+    func detectorFieldRoundTrips() async {
+        let url = temporaryURL()
+        let store = FileJournalStore(fileURL: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        await store.append(JournalEvent(time: Instant(secondsSinceEpoch: 1_700_000_000),
+                                        trigger: .scheduled,
+                                        detector: "Через резидентный прокси",
+                                        egressIP: "203.0.113.40",
+                                        kind: .transition(from: .protected, to: .leak)))
+        let events = await store.recent(limit: 10)
+        #expect(events.first?.detector == "Через резидентный прокси")
+        let raw = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        #expect(raw.contains("\"detector\":\"Через резидентный прокси\""))
+        let text = await store.exportText()
+        #expect(text.contains("[Через резидентный прокси] Защищено → Утечка"))
+    }
+
+    @Test("Записи прежних версий без поля «детектор» читаются как есть")
+    func readsLegacyRecordsWithoutDetector() async throws {
+        let url = temporaryURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: url) }
+        // Строка в формате прежней версии: поля detector нет вовсе
+        let legacy = #"{"time":{"secondsSinceEpoch":1700000000},"trigger":"scheduled","egressIP":"203.0.113.40","kind":{"fact":{"_0":"старая запись"}}}"#
+        try (legacy + "\n").write(to: url, atomically: true, encoding: .utf8)
+
+        let store = FileJournalStore(fileURL: url)
+        let events = await store.recent(limit: 10)
+        #expect(events.count == 1)
+        #expect(events.first?.detector == nil)
+        #expect(JournalFormatting.event(events[0]) == "старая запись")
+        // Новая запись без детектора поля не получает: события общих слоёв
+        await store.append(JournalEvent(time: Instant(secondsSinceEpoch: 1_700_000_001),
+                                        trigger: .path, kind: .fact("сеть пропала")))
+        let raw = try String(contentsOf: url, encoding: .utf8)
+        #expect(!raw.contains("detector"))
+    }
+
     @Test("Очистка удаляет всё")
     func clears() async {
         let url = temporaryURL()
@@ -146,22 +188,8 @@ struct WifiGatewayTests {
 
 @Suite("RuBeaconProber")
 struct RuBeaconProberTests {
-    @Test("Разбирает JSON-строку yandex")
-    func parsesYandexJSON() {
-        #expect(RuBeaconProber.parse("\"192.0.2.10\"") == IPAddress("192.0.2.10"))
-    }
-
-    @Test("Разбирает голый text/plain 2ip.ru")
-    func parsesPlainText() {
-        #expect(RuBeaconProber.parse("192.0.2.10\n") == IPAddress("192.0.2.10"))
-    }
-
-    @Test("Отбрасывает всё, что не IP", arguments: [
-        "<html><body>Ваш IP</body></html>", "", "\"\"", "не ip", "{\"ip\":\"1.1.1.1\"}",
-    ])
-    func rejectsNonIP(_ body: String) {
-        #expect(RuBeaconProber.parse(body) == nil)
-    }
+    // Разбор ответа (JSON-строка yandex, голый IP 2ip.ru) — доменный
+    // `PlainIPParser`, его таблица — в DomainTests.
 
     @Test("Требует зону .ru: иначе запрос уйдёт через VPN")
     func requiresRussianZone() {
@@ -191,12 +219,9 @@ struct DefaultsSettingsStoreTests {
         #expect(settings.probeSeconds == 60)
         #expect(settings.probeTimeoutSeconds == 6)
         #expect(settings.leakConfirmationSeconds == 2.5)
-        #expect(settings.expectedIPs.isEmpty)
-        // Группа подставляется онбордингом, только если существует в LS
-        #expect(settings.leakGroups.isEmpty)
-        // Список серверов пуст по умолчанию: приложение раздаётся другим
-        // людям, а выходные узлы у каждого свои.
-        #expect(settings.forbiddenEgressIPs.isEmpty)
+        // Один детектор «Основной»: группа подставляется онбордингом, только
+        // если существует в LS; серверов нет — у каждого свои.
+        #expect(settings.detectors == [.primary()])
         #expect(settings.ruBeaconURL == "https://yandex.ru/internet/api/v0/ip")
         #expect(settings.ruBeaconFallbackURL == "https://2ip.ru")
         #expect(settings.ruBeaconRefreshSeconds == 300)
@@ -208,14 +233,35 @@ struct DefaultsSettingsStoreTests {
         let defaults = isolatedDefaults()
         var settings = DefaultsSettingsStore(defaults: defaults).load()
         settings.probeSeconds = 30
-        settings.leakGroups = ["VPN down", "Ещё группа"]
+        settings.detectors[0].groups = ["VPN down", "Ещё группа"]
         settings.observeOnly = true
         DefaultsSettingsStore(defaults: defaults).save(settings)
 
         let reloaded = DefaultsSettingsStore(defaults: defaults).load()
         #expect(reloaded.probeSeconds == 30)
-        #expect(reloaded.leakGroups == ["VPN down", "Ещё группа"])
+        #expect(reloaded.detectors[0].groups == ["VPN down", "Ещё группа"])
         #expect(reloaded.observeOnly)
+    }
+
+    @Test("Детектор с SOCKS5-прокси переживает перезапуск")
+    func detectorRoundTrips() {
+        let defaults = isolatedDefaults()
+        var settings = DefaultsSettingsStore(defaults: defaults).load()
+        let proxied = DetectorConfig(
+            id: DetectorID("B5F2A1C4-0000-4000-8000-000000000002"),
+            name: "Через резидентный прокси", protectionMode: .strict,
+            beacon: BeaconConfig(primaryURL: "https://example.com/cdn-cgi/trace",
+                                 fallbackURL: nil, format: .cdnCgiTrace),
+            proxy: ProxyConfig(kind: .socks5, host: "203.0.113.5", port: 1080),
+            warpCountsAsProtection: false,
+            expectedIPs: ["198.51.100.40"], forbiddenEgressIPs: ["203.0.113.5"],
+            tripwireEnabled: false, groups: ["Telegram"])
+        settings.detectors.append(proxied)
+        DefaultsSettingsStore(defaults: defaults).save(settings)
+
+        let reloaded = DefaultsSettingsStore(defaults: defaults).load()
+        #expect(reloaded.detectors.count == 2)
+        #expect(reloaded.detectors.last == proxied)
     }
 
     @Test("Абсурдные интервалы зажимаются в разумные границы")
@@ -233,32 +279,296 @@ struct DefaultsSettingsStoreTests {
         #expect(sanitized.pathDebounceSeconds == 0.05)
     }
 
-    @Test("Debug-рычаги приёмки читаются из defaults")
+    @Test("Санитизация детектора: порт прокси, URL маяков, имя, повтор идентификатора")
+    func sanitizesDetectors() {
+        var settings = AppSettings()
+        var broken = DetectorConfig(id: DetectorID("x"), name: "   ")
+        broken.proxy = ProxyConfig(kind: .httpConnect, host: " 127.0.0.1 ", port: 70_000)
+        broken.beacon.primaryURL = "ftp://example.com"
+        broken.beacon.fallbackURL = "не url"
+        var duplicate = DetectorConfig(id: DetectorID("x"), name: "Дубль")
+        duplicate.isEnabled = false
+        settings.detectors = [broken, duplicate]
+
+        let sanitized = DefaultsSettingsStore.sanitized(settings)
+        #expect(sanitized.detectors.count == 1)
+        let detector = sanitized.detectors[0]
+        #expect(detector.name == "Без названия")
+        #expect(detector.proxy.port == 65_535)
+        #expect(detector.proxy.host == "127.0.0.1")
+        #expect(detector.proxy.kind == .httpConnect)
+        #expect(detector.beacon.primaryURL == BeaconConfig.cloudflare.primaryURL)
+        #expect(detector.beacon.fallbackURL == nil)
+    }
+
+    @Test("Debug-рычаги приёмки читаются из defaults и действуют на все детекторы")
     func readsDebugKeys() {
         let defaults = isolatedDefaults()
         defaults.set(true, forKey: DefaultsSettingsStore.Key.debugIgnoreWarp.rawValue)
         defaults.set("198.51.100.10", forKey: DefaultsSettingsStore.Key.debugFakeEgressIP.rawValue)
 
-        let settings = DefaultsSettingsStore(defaults: defaults).load()
+        var settings = DefaultsSettingsStore(defaults: defaults).load()
+        settings.detectors.append(.newDetector(id: DetectorID("второй")))
         #expect(settings.debugIgnoreWarp)
         #expect(settings.debugFakeEgressIP == "198.51.100.10")
-        // Критерии классификации подхватывают debug-режим
-        #expect(settings.criteria(directRuIP: nil).ignoreWarpForDebug)
+        // Критерии классификации каждого детектора подхватывают debug-режим
+        for detector in settings.detectors {
+            #expect(settings.criteria(for: detector, directRuIP: nil).ignoreWarpForDebug)
+        }
+    }
+
+    // MARK: - Миграция настроек одного детектора
+
+    private func legacyDefaults() -> UserDefaults {
+        let defaults = isolatedDefaults()
+        defaults.set(["VPN down"], forKey: "leakGroups")
+        defaults.set(["192.0.2.10"], forKey: "expectedIPs")
+        defaults.set(["198.51.100.10"], forKey: "forbiddenEgressIPs")
+        defaults.set("strict", forKey: "protectionMode")
+        return defaults
+    }
+
+    @Test("Обновление: старые ключи собираются в «Основной», массив записан")
+    func migratesLegacyKeys() throws {
+        let defaults = legacyDefaults()
+        let store = DefaultsSettingsStore(defaults: defaults)
+
+        let outcome = store.prepareDetectors()
+
+        var expected = DetectorConfig.primary()
+        expected.protectionMode = .strict
+        expected.expectedIPs = ["192.0.2.10"]
+        expected.forbiddenEgressIPs = ["198.51.100.10"]
+        expected.groups = ["VPN down"]
+        #expect(outcome == .migrated(expected))
+        #expect(store.load().detectors == [expected])
+        // Массив записан одним ключом — второй запуск миграцию не повторяет
+        #expect(defaults.string(forKey: "detectors") != nil)
+        #expect(DefaultsSettingsStore(defaults: defaults).prepareDetectors() == .stored)
+        // Поведение прежнее: без прокси, маяк Cloudflare, warp=on — защита
+        let primary = try #require(store.load().detectors.first)
+        #expect(primary.proxy.isDirect)
+        #expect(primary.beacon == .cloudflare)
+        #expect(primary.warpCountsAsProtection && primary.tripwireEnabled)
+    }
+
+    @Test("Откат: старые ключи не тронуты ни миграцией, ни сохранением")
+    func keepsLegacyKeysForRollback() {
+        let defaults = legacyDefaults()
+        let store = DefaultsSettingsStore(defaults: defaults)
+        store.prepareDetectors()
+        var settings = store.load()
+        settings.detectors[0].groups = ["Другая группа"]
+        settings.detectors[0].protectionMode = .reactive
+        store.save(settings)
+
+        #expect(defaults.stringArray(forKey: "leakGroups") == ["VPN down"])
+        #expect(defaults.stringArray(forKey: "expectedIPs") == ["192.0.2.10"])
+        #expect(defaults.stringArray(forKey: "forbiddenEgressIPs") == ["198.51.100.10"])
+        #expect(defaults.string(forKey: "protectionMode") == "strict")
+    }
+
+    @Test("Нераспознанный прежний режим мигрирует в реактивный")
+    func migratesUnknownModeAsReactive() {
+        let defaults = isolatedDefaults()
+        defaults.set("paranoid", forKey: "protectionMode")
+        let outcome = DefaultsSettingsStore(defaults: defaults).prepareDetectors()
+        guard case .migrated(let primary) = outcome else {
+            Issue.record("ожидалась миграция")
+            return
+        }
+        #expect(primary.protectionMode == .reactive)
+    }
+
+    @Test("Чистая установка: «Основной» по дефолтам, записи о миграции нет")
+    func freshInstall() {
+        let defaults = isolatedDefaults()
+        let store = DefaultsSettingsStore(defaults: defaults)
+        #expect(store.prepareDetectors() == .freshInstall)
+        #expect(store.load().detectors == [.primary()])
+        // Ничего не записано: первое изменение настроек запишет массив
+        #expect(defaults.object(forKey: "detectors") == nil)
+    }
+
+    @Test("Повреждённый массив: дефолт и предупреждение, значение не перезаписано")
+    func corruptedDetectors() {
+        let defaults = isolatedDefaults()
+        defaults.set("[{\"id\": ", forKey: "detectors")
+        let store = DefaultsSettingsStore(defaults: defaults)
+
+        guard case .corrupted = store.prepareDetectors() else {
+            Issue.record("ожидалось повреждение")
+            return
+        }
+        #expect(store.load().detectors == [.primary()])
+        #expect(defaults.string(forKey: "detectors") == "[{\"id\": ")
+    }
+
+    @Test("Массив не той формы — тоже повреждение")
+    func wrongShapeIsCorrupted() {
+        let defaults = isolatedDefaults()
+        defaults.set(["не", "json"], forKey: "detectors")
+        guard case .corrupted = DefaultsSettingsStore(defaults: defaults).prepareDetectors() else {
+            Issue.record("ожидалось повреждение")
+            return
+        }
+    }
+
+    @Test("Пустой массив детекторов допустим")
+    func emptyDetectorsAllowed() {
+        let defaults = isolatedDefaults()
+        var settings = DefaultsSettingsStore(defaults: defaults).load()
+        settings.detectors = []
+        DefaultsSettingsStore(defaults: defaults).save(settings)
+        #expect(DefaultsSettingsStore(defaults: defaults).load().detectors.isEmpty)
     }
 }
 
-@Suite("Критерии из настроек")
+@Suite("Критерии и failsafe из настроек")
 struct SettingsCriteriaTests {
-    @Test("Строки настроек превращаются в адреса, мусор отбрасывается")
+    @Test("Строки детектора превращаются в адреса, мусор отбрасывается")
     func buildsCriteria() {
         var settings = AppSettings()
-        settings.expectedIPs = ["10.0.0.1", "не ip"]
-        settings.forbiddenEgressIPs = ["198.51.100.10", ""]
+        settings.detectors[0].expectedIPs = ["10.0.0.1", "не ip"]
+        settings.detectors[0].forbiddenEgressIPs = ["198.51.100.10", ""]
 
-        let criteria = settings.criteria(directRuIP: IPAddress("192.0.2.10"))
+        let criteria = settings.criteria(for: settings.detectors[0],
+                                         directRuIP: IPAddress("192.0.2.10"))
         #expect(criteria.expectedIPs == Set([IPAddress("10.0.0.1")!]))
         #expect(criteria.forbiddenServers == Set([IPAddress("198.51.100.10")!]))
         #expect(criteria.directRuIP == IPAddress("192.0.2.10"))
+    }
+}
+
+/// Путь пробы и растяжки детектора: прокси через `ProxyConfiguration`,
+/// без системных настроек прокси.
+@Suite("Прокси детектора")
+struct ProxyRoutingTests {
+    @Test("Без прокси: прямой путь, системный прокси выключен пустым словарём")
+    func directIgnoresSystemProxy() {
+        let configuration = BeaconProber.sessionConfiguration(proxy: .direct, timeout: 6)
+        #expect(configuration.proxyConfigurations.isEmpty)
+        #expect(configuration.connectionProxyDictionary?.isEmpty == true)
+        #expect(configuration.urlCache == nil)
+        #expect(configuration.timeoutIntervalForRequest == 6)
+    }
+
+    @Test("SOCKS5 и HTTP CONNECT дают одну конфигурацию без отката на прямой путь",
+          arguments: [ProxyConfig.Kind.socks5, .httpConnect])
+    func proxiedSession(kind: ProxyConfig.Kind) throws {
+        let proxy = ProxyConfig(kind: kind, host: "203.0.113.5", port: 1080)
+        let configuration = BeaconProber.sessionConfiguration(proxy: proxy, timeout: 6)
+        let proxies = configuration.proxyConfigurations
+        #expect(proxies.count == 1)
+        let only = try #require(proxies.first)
+        #expect(!only.allowFailover)
+        #expect(only.debugDescription.contains("203.0.113.5"))
+        #expect(only.debugDescription.contains("1080"))
+    }
+
+    @Test("Прокси без адреса или с портом 0 конфигурации не даёт")
+    func incompleteProxyHasNoEndpoint() {
+        #expect(ProxyRouting.endpoint(for: ProxyConfig(kind: .socks5, host: "", port: 1080)) == nil)
+        #expect(ProxyRouting.endpoint(for: ProxyConfig(kind: .socks5, host: "203.0.113.5", port: 0)) == nil)
+        #expect(ProxyRouting.endpoint(for: ProxyConfig(kind: .direct, host: "203.0.113.5", port: 1080)) == nil)
+    }
+
+    @Test("NWParameters: без прокси — preferNoProxies")
+    func directParametersPreferNoProxies() {
+        let parameters = NWParameters.tls
+        ProxyRouting.apply(.direct, to: parameters)
+        #expect(parameters.preferNoProxies)
+    }
+
+    @Test("Проба через прокси без адреса — Offline без похода в сеть")
+    func incompleteProxyProbeIsOffline() async {
+        var detector = DetectorConfig.primary()
+        detector.proxy = ProxyConfig(kind: .socks5, host: "", port: 1080)
+        let result = await BeaconProber().fetchTrace(for: detector, timeout: 1)
+        #expect(result == .offline(.networkFailure))
+    }
+
+    @Test("Отказ прокси — Offline, не утечка", arguments: [
+        NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost),
+        NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost),
+        NSError(domain: kCFErrorDomainCFNetwork as String, code: 110),
+        NSError(domain: NSURLErrorDomain, code: NSURLErrorUserAuthenticationRequired),
+    ])
+    func proxyFailureIsOffline(error: NSError) {
+        #expect(BeaconProber.classify(error) == .networkFailure)
+    }
+
+    @Test("Таймаут прокси — Offline по таймауту")
+    func proxyTimeoutIsTimeout() {
+        #expect(BeaconProber.classify(NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut))
+            == .timeout)
+    }
+
+    @Test("Debug-подмена egress — в формате маяка детектора")
+    func debugFakeFollowsFormat() async {
+        var configured = AppSettings()
+        configured.debugFakeEgressIP = "198.51.100.10"
+        let settings = configured
+        let prober = BeaconProber(settingsProvider: { settings })
+        var plain = DetectorConfig.primary()
+        plain.beacon.format = .plainIP
+        #expect(await prober.fetchTrace(for: plain, timeout: 1) == .body("198.51.100.10"))
+        let trace = await prober.fetchTrace(for: .primary(), timeout: 1)
+        guard case .body(let body) = trace else {
+            Issue.record("ожидалось тело")
+            return
+        }
+        #expect(TraceParser.parse(body)?.ip == IPAddress("198.51.100.10"))
+    }
+}
+
+/// Растяжка ходит на хост основного маяка детектора и шлёт heartbeat по его
+/// пути (D6 design.md).
+@Suite("Растяжка детектора")
+struct TripwireTargetTests {
+    @Test("Маяк Cloudflare по умолчанию — прежний heartbeat")
+    func defaultCloudflare() throws {
+        let target = try #require(TripwireTarget(beaconURL: "https://www.cloudflare.com/cdn-cgi/trace"))
+        #expect(target.host == "www.cloudflare.com")
+        #expect(target.port == 443)
+        #expect(target.usesTLS)
+        #expect(target.heartbeatRequest == "GET /cdn-cgi/trace HTTP/1.1\r\n"
+            + "Host: www.cloudflare.com\r\n"
+            + "User-Agent: LSVPNCompanion/1.0\r\n"
+            + "Connection: keep-alive\r\n\r\n")
+    }
+
+    @Test("Другой домен, нестандартный порт и запрос с query")
+    func customBeacon() throws {
+        let target = try #require(TripwireTarget(beaconURL: "https://example.com:8443/ip?format=text"))
+        #expect(target.host == "example.com")
+        #expect(target.port == 8443)
+        #expect(target.path == "/ip?format=text")
+        #expect(target.hostHeader == "example.com:8443")
+        #expect(target.heartbeatRequest.hasPrefix("GET /ip?format=text HTTP/1.1\r\nHost: example.com:8443\r\n"))
+    }
+
+    @Test("Маяк по IP, без пути и по http")
+    func ipAndPlainHTTP() throws {
+        let fallback = try #require(TripwireTarget(beaconURL: "https://1.1.1.1/cdn-cgi/trace"))
+        #expect(fallback.host == "1.1.1.1")
+        let plain = try #require(TripwireTarget(beaconURL: "http://192.0.2.10"))
+        #expect(plain.port == 80)
+        #expect(!plain.usesTLS)
+        #expect(plain.path == "/")
+        #expect(plain.hostHeader == "192.0.2.10")
+    }
+
+    @Test("IPv6-хост — в скобках в заголовке Host")
+    func ipv6Host() throws {
+        let target = try #require(TripwireTarget(beaconURL: "https://[2001:db8::1]/cdn-cgi/trace"))
+        #expect(target.host == "2001:db8::1")
+        #expect(target.hostHeader == "[2001:db8::1]")
+    }
+
+    @Test("Не URL маяка — растяжки нет", arguments: ["", "ftp://example.com/x", "не url"])
+    func rejectsNonBeacon(raw: String) {
+        #expect(TripwireTarget(beaconURL: raw) == nil)
     }
 }
 
