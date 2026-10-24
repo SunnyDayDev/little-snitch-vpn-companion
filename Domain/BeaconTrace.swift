@@ -40,7 +40,7 @@ enum TraceParser {
 }
 
 /// Разбор «голого IP»: тело — адрес, допустима JSON-строка `"<ip>"`. Так
-/// отвечают РУ-маяк (yandex — JSON-строкой, 2ip.ru — text/plain) и маяки
+/// отвечают РУ-маяк (yandex — JSON-строкой, ip.beget.ru — text/plain) и маяки
 /// детекторов формата `plainIP`. Всё, что после разбора не адрес, — `nil`.
 enum PlainIPParser {
     static func parse(_ body: String) -> IPAddress? {

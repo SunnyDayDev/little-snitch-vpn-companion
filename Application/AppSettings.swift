@@ -22,7 +22,10 @@ struct AppSettings: Hashable, Sendable, Codable {
     var detectors: [DetectorConfig] = [.primary()]
 
     var ruBeaconURL = "https://yandex.ru/internet/api/v0/ip"
-    var ruBeaconFallbackURL = "https://2ip.ru"
+    /// Резервный РУ-маяк: голый IP в text/plain. Прежний `https://2ip.ru`
+    /// перестал отвечать адресом (404 «Moved to 2ip.io», а 2ip.io вне зоны
+    /// .ru) — проверено 2026-10-24.
+    var ruBeaconFallbackURL = "https://ip.beget.ru"
     var ruBeaconRefreshSeconds = 300.0
 
     /// Скрытые debug-рычаги для приёмки (§14, сценарии 2–3 и 13–14).
@@ -31,6 +34,9 @@ struct AppSettings: Hashable, Sendable, Codable {
     var debugFakeEgressIP: String?
 
     static let defaultLeakGroupName = "VPN down"
+    /// Мёртвый резервный РУ-маяк прежних версий: сохранённое значение
+    /// заменяется текущим дефолтом при чтении настроек.
+    static let legacyRuBeaconFallbackURL = "https://2ip.ru"
 
     func detector(_ id: DetectorID) -> DetectorConfig? {
         detectors.first { $0.id == id }

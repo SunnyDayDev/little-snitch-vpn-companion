@@ -88,8 +88,12 @@ struct DefaultsSettingsStore: SettingsStore, @unchecked Sendable {
 
         settings.ruBeaconURL = defaults.string(forKey: Key.ruBeaconURL.rawValue)
             ?? AppSettings().ruBeaconURL
-        settings.ruBeaconFallbackURL = defaults.string(forKey: Key.ruBeaconFallbackURL.rawValue)
-            ?? AppSettings().ruBeaconFallbackURL
+        // Каждое сохранение пишет все ключи, поэтому мёртвый дефолт прежних
+        // версий лежит в defaults почти у всех — он не выбор пользователя.
+        let fallback = defaults.string(forKey: Key.ruBeaconFallbackURL.rawValue)
+        settings.ruBeaconFallbackURL = fallback == nil || fallback == AppSettings.legacyRuBeaconFallbackURL
+            ? AppSettings().ruBeaconFallbackURL
+            : fallback!
         settings.ruBeaconRefreshSeconds = defaults.double(forKey: Key.ruBeaconRefreshSeconds.rawValue)
 
         settings.debugIgnoreWarp = defaults.bool(forKey: Key.debugIgnoreWarp.rawValue)

@@ -5,7 +5,7 @@ import SwiftUI
 /// уходе фокуса, а не на каждый символ: промежуточная правка адреса прокси
 /// иначе перезапускала бы растяжку детектора на каждом нажатии. Невалидное
 /// значение подсвечивается `danger` и не применяется — в силе остаётся
-/// прежнее.
+/// прежнее. Неактивное поле не проверяется и не подсвечивается.
 @MainActor
 struct DSTextField: View {
     let value: String
@@ -46,10 +46,12 @@ struct DSTextField: View {
             .onSubmit(commit)
     }
 
-    private var isValid: Bool { validate?(text) ?? true }
+    /// Неактивное поле не проверяется: его значение сейчас не применяется
+    /// (адрес прокси у детектора без прокси), и красная рамка врала бы.
+    private var isValid: Bool { !isEnabled || (validate?(text) ?? true) }
 
     private func commit() {
-        guard isValid, text != value else { return }
+        guard isEnabled, isValid, text != value else { return }
         onCommit(text)
     }
 }
@@ -61,6 +63,10 @@ struct DSTextField: View {
         DSTextField(value: "203.0.113.5", isMonospaced: true,
                     validate: { ProxyConfig.parseAddress($0) != nil }) { _ in }
         DSTextField(value: "Через резидентный прокси") { _ in }
+        // Адрес прокси у детектора без прокси: неактивно, без рамки ошибки
+        DSTextField(value: "", placeholder: "203.0.113.5:1080", isMonospaced: true,
+                    isEnabled: false,
+                    validate: { ProxyConfig.parseAddress($0) != nil }) { _ in }
     }
     .padding(DSSpacing.lg)
     .background(DSColor.bgCard)

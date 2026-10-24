@@ -188,8 +188,21 @@ struct WifiGatewayTests {
 
 @Suite("RuBeaconProber")
 struct RuBeaconProberTests {
-    // Разбор ответа (JSON-строка yandex, голый IP 2ip.ru) — доменный
+    // Разбор ответа (JSON-строка yandex, голый IP ip.beget.ru) — доменный
     // `PlainIPParser`, его таблица — в DomainTests.
+
+    @Test("Сессия РУ-маяка — напрямую: без системного прокси и прокси детекторов")
+    func sessionIsDirect() {
+        let configuration = RuBeaconProber.sessionConfiguration(timeout: 6)
+        #expect(configuration.proxyConfigurations.isEmpty)
+        #expect(configuration.connectionProxyDictionary?.isEmpty == true)
+        #expect(configuration.urlCache == nil)
+    }
+
+    @Test("Резервный РУ-маяк по умолчанию — в зоне .ru")
+    func defaultFallbackIsRussianZone() {
+        #expect(RuBeaconProber.isRussianZone(URL(string: AppSettings().ruBeaconFallbackURL)!))
+    }
 
     @Test("Требует зону .ru: иначе запрос уйдёт через VPN")
     func requiresRussianZone() {
@@ -223,7 +236,7 @@ struct DefaultsSettingsStoreTests {
         // если существует в LS; серверов нет — у каждого свои.
         #expect(settings.detectors == [.primary()])
         #expect(settings.ruBeaconURL == "https://yandex.ru/internet/api/v0/ip")
-        #expect(settings.ruBeaconFallbackURL == "https://2ip.ru")
+        #expect(settings.ruBeaconFallbackURL == "https://ip.beget.ru")
         #expect(settings.ruBeaconRefreshSeconds == 300)
         #expect(settings.notifyTransitions && settings.notifyErrors)
     }
@@ -262,6 +275,18 @@ struct DefaultsSettingsStoreTests {
         let reloaded = DefaultsSettingsStore(defaults: defaults).load()
         #expect(reloaded.detectors.count == 2)
         #expect(reloaded.detectors.last == proxied)
+    }
+
+    @Test("Мёртвый резервный РУ-маяк прежних версий заменяется текущим дефолтом")
+    func replacesLegacyRuFallback() {
+        let defaults = isolatedDefaults()
+        defaults.set("https://2ip.ru", forKey: DefaultsSettingsStore.Key.ruBeaconFallbackURL.rawValue)
+        #expect(DefaultsSettingsStore(defaults: defaults).load().ruBeaconFallbackURL
+            == "https://ip.beget.ru")
+        // Своё значение пользователя не трогается
+        defaults.set("https://example.ru/ip", forKey: DefaultsSettingsStore.Key.ruBeaconFallbackURL.rawValue)
+        #expect(DefaultsSettingsStore(defaults: defaults).load().ruBeaconFallbackURL
+            == "https://example.ru/ip")
     }
 
     @Test("Абсурдные интервалы зажимаются в разумные границы")

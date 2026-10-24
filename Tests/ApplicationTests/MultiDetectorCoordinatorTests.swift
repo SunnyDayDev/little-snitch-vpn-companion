@@ -285,6 +285,39 @@ struct MultiDetectorCoordinatorTests {
         #expect(warnings.contains { $0.contains("сплит") })
     }
 
+    @Test("Немаршрутизируемый ответ РУ-маяка отброшен с предупреждением, годный — принят")
+    func nonRoutableRuAnswerIsRejected() async {
+        let harness = makeHarness()
+        await bothProtected(harness)
+        await harness.coordinator.runProbe(trigger: .startup)
+        // Основной РУ-маяк ответил через локальный прокси, резервный — честно
+        await harness.directIP.enqueue(result: DirectIPResult(
+            address: TestData.providerIP, rejected: [IPAddress("127.0.0.1")!]))
+
+        await harness.coordinator.refreshDirectIP()
+
+        #expect(await harness.coordinator.snapshot.directRuIP == TestData.providerIP)
+        let warnings = await texts(harness) { if case .warning(let t) = $0 { t } else { nil } }
+        #expect(warnings.contains("РУ-маяк вернул немаршрутизируемый адрес 127.0.0.1 — ответ отброшен"))
+    }
+
+    @Test("Только немаршрутизируемые ответы: прямой IP не обновляется")
+    func onlyNonRoutableKeepsDirectIP() async {
+        let harness = makeHarness()
+        await bothProtected(harness)
+        await harness.coordinator.runProbe(trigger: .startup)
+        await harness.directIP.enqueue(result: DirectIPResult(
+            address: nil, rejected: [IPAddress("127.0.0.1")!, IPAddress("198.18.0.7")!]))
+
+        await harness.coordinator.refreshDirectIP()
+
+        #expect(await harness.coordinator.snapshot.directRuIP == nil)
+        let warnings = await texts(harness) { if case .warning(let t) = $0 { t } else { nil } }
+        #expect(warnings.filter { $0.contains("немаршрутизируемый") }.count == 2)
+        // Пробы по РУ-маяку не было: адреса нет — переоценивать нечего
+        #expect(await harness.beacon.callCount == 2)
+    }
+
     @Test("Guard: без вердикта ни одного детектора прямой IP откладывается")
     func guardDefersWithoutVerdicts() async {
         let harness = makeHarness(directIPFallback: TestData.providerIP)

@@ -108,19 +108,24 @@ actor FakeBeacon: BeaconProbing {
 }
 
 actor FakeDirectIP: DirectIPProbing {
-    private var answers: [IPAddress?] = []
-    private var fallback: IPAddress?
+    private var answers: [DirectIPResult] = []
+    private var fallback: DirectIPResult
     private(set) var callCount = 0
 
     init(fallback: IPAddress? = nil) {
-        self.fallback = fallback
+        self.fallback = DirectIPResult(address: fallback)
     }
 
     func enqueue(_ values: IPAddress?...) {
-        answers.append(contentsOf: values)
+        answers.append(contentsOf: values.map { DirectIPResult(address: $0) })
     }
 
-    func fetchDirectIP(timeout: Double) async -> IPAddress? {
+    /// Ответ целиком — с отброшенными немаршрутизируемыми адресами.
+    func enqueue(result: DirectIPResult) {
+        answers.append(result)
+    }
+
+    func fetchDirectIP(timeout: Double) async -> DirectIPResult {
         callCount += 1
         return answers.isEmpty ? fallback : answers.removeFirst()
     }

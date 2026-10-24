@@ -6,7 +6,8 @@ import os
 /// неофициальные — отсюда два кандидата и жёсткая валидация ответа. Прямой
 /// IP один на машину: запрос идёт напрямую, без прокси какого-либо детектора.
 struct RuBeaconProber: DirectIPProbing {
-    /// 2ip.ru отдаёт голый text/plain только не-браузерному клиенту.
+    /// Не-браузерный клиент: сервисы «какой у меня IP» отдают ему голый
+    /// text/plain, а не страницу.
     private static let userAgent = "curl/8.7.1"
 
     private let settingsProvider: @Sendable () -> AppSettings
@@ -17,17 +18,38 @@ struct RuBeaconProber: DirectIPProbing {
         self.settingsProvider = settingsProvider
     }
 
-    func fetchDirectIP(timeout: Double) async -> IPAddress? {
+    func fetchDirectIP(timeout: Double) async -> DirectIPResult {
         let settings = settingsProvider()
+        var rejected: [IPAddress] = []
         for candidate in [settings.ruBeaconURL, settings.ruBeaconFallbackURL] {
             guard let url = URL(string: candidate) else { continue }
             guard Self.isRussianZone(url) else {
                 logger.warning("РУ-маяк \(candidate, privacy: .public) не в зоне .ru — пропускаем")
                 continue
             }
-            if let ip = await fetch(url, timeout: timeout) { return ip }
+            guard let ip = await fetch(url, timeout: timeout) else { continue }
+            // Сервис снаружи не может увидеть loopback, частный или fake-IP
+            // адрес: такой ответ — перехват по пути, пробуем резервный.
+            guard ip.isGloballyRoutable else {
+                rejected.append(ip)
+                continue
+            }
+            return DirectIPResult(address: ip, rejected: rejected)
         }
-        return nil
+        return DirectIPResult(address: nil, rejected: rejected)
+    }
+
+    /// Сессия РУ-маяка — напрямую: системный прокси macOS (например, Surge
+    /// на 127.0.0.1) отвечал бы за сервис своим адресом, а прокси детекторов
+    /// к прямому IP сети отношения не имеют.
+    static func sessionConfiguration(timeout: Double) -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        configuration.urlCache = nil
+        ProxyRouting.apply(.direct, to: configuration)
+        return configuration
     }
 
     /// Домен обязан быть в зоне `.ru`: иначе запрос уйдёт через VPN и вернёт
@@ -38,12 +60,7 @@ struct RuBeaconProber: DirectIPProbing {
     }
 
     private func fetch(_ url: URL, timeout: Double) async -> IPAddress? {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        configuration.timeoutIntervalForRequest = timeout
-        configuration.timeoutIntervalForResource = timeout
-        configuration.urlCache = nil
-        let session = URLSession(configuration: configuration)
+        let session = URLSession(configuration: Self.sessionConfiguration(timeout: timeout))
         defer { session.finishTasksAndInvalidate() }
 
         var request = URLRequest(url: url)
@@ -54,7 +71,7 @@ struct RuBeaconProber: DirectIPProbing {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let body = String(data: data, encoding: .utf8) else { return nil }
-            // yandex отдаёт JSON-строку `"<ip>"`, 2ip.ru — голый IP: тот же
+            // yandex отдаёт JSON-строку `"<ip>"`, ip.beget.ru — голый IP: тот же
             // доменный разбор, что у маяков детекторов формата «голый IP».
             return PlainIPParser.parse(body)
         } catch {

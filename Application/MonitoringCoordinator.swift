@@ -759,9 +759,18 @@ actor MonitoringCoordinator {
     /// РУ-маяк (§4.4): обновляет динамическую часть denylist всех детекторов
     /// и переоценивает их состояние.
     func refreshDirectIP() async {
-        guard let candidate = await directIP.fetchDirectIP(timeout: settings.probeTimeoutSeconds) else {
-            return
+        let answer = await directIP.fetchDirectIP(timeout: settings.probeTimeoutSeconds)
+        // Немаршрутизируемый ответ — перехват по пути (локальный прокси,
+        // fake-IP DNS): в denylist ему не место, но пользователь должен
+        // узнать, почему прямой IP не определяется.
+        for ip in answer.rejected {
+            await journal.append(JournalEvent(
+                time: await clock.now(),
+                trigger: .ruBeacon,
+                egressIP: ip.text,
+                kind: .warning("РУ-маяк вернул немаршрутизируемый адрес \(ip.text) — ответ отброшен")))
         }
+        guard let candidate = answer.address else { return }
         let verdicts = orderedIDs.compactMap { id -> DirectIPGuard.Verdict? in
             guard let runtime = runtimes[id], let trace = runtime.machine.lastTrace else { return nil }
             return DirectIPGuard.Verdict(

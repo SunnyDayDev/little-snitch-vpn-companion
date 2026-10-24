@@ -213,8 +213,14 @@ VPN автоматически включает запрещающие rule grou
     тело — JSON-строка `"<ip>"`;
   - резервный: `https://2ip.ru` — для не-браузерного клиента отдаёт `text/plain`, голый IP
     (поведение зависит от User-Agent: слать явный curl-подобный UA, не браузерный).
+    *2026-10-24: 2ip.ru отвечает 404 «Moved to 2ip.io» (2ip.io вне зоны `.ru`); резервный —
+    `https://ip.beget.ru` (`text/plain`, голый IP), change add-multiple-detectors.*
   Ответ в любом случае валидировать: тело после разбора обязано быть IP-адресом (v4/v6),
-  иначе результат отбрасывается. URLSession ephemeral, таймаут 6 с.
+  иначе результат отбрасывается. URLSession ephemeral, таймаут 6 с. *Change
+  add-multiple-detectors: запрос идёт напрямую, мимо системного прокси macOS (локальный
+  прокси вроде Surge отвечал за Yandex `"127.0.0.1"`), а немаршрутизируемый ответ
+  (loopback, частные, link-local, 198.18.0.0/15, CGNAT, multicast, unspecified)
+  отбрасывается с предупреждением в журнале, после чего спрашивается резервный маяк.*
   Не годятся (проверено): `myip.ru` (IP рендерится скриптом), `api.2ip.ru`, `ip.rt.ru`
   (не существуют). Оба рабочих endpoint'а неофициальные — потому их два и оба
   конфигурируемы.
@@ -778,7 +784,8 @@ LittleSnitchVPNCompanion/
 утечки: 2 пробы / 2.5 с, `expectedIPs=[]`,
 `leakGroups=["VPN down"]` (если группа существует; иначе пусто + подсказка в UI),
 обе категории уведомлений включены, `ruBeaconURL="https://yandex.ru/internet/api/v0/ip"`,
-`ruBeaconFallbackURL="https://2ip.ru"`, `ruBeaconRefreshSeconds=300`.
+`ruBeaconFallbackURL="https://2ip.ru"` (*с change add-multiple-detectors —
+`https://ip.beget.ru`*), `ruBeaconRefreshSeconds=300`.
 
 *Детекторы (change add-multiple-detectors):* `expectedIPs`, `forbiddenEgressIPs`,
 `leakGroups` и `protectionMode` переехали в детектор и хранятся ключом `detectors`
@@ -872,7 +879,7 @@ IP пусты, растяжка включена, группы `["VPN down"]` (�
   реализован; страховкой от медленного старта LS остаётся retry/backoff до 10 мин.
 - **Зависимость от Cloudflare**: маяки недоступны → Offline (safe-состояние). Свой маяк
   решено не поднимать.
-- **Сторонние РУ-маяки** (yandex internetometer API, 2ip.ru): endpoints неофициальные,
+- **Сторонние РУ-маяки** (yandex internetometer API, 2ip.ru — с 2026-10 ip.beget.ru): endpoints неофициальные,
   могут исчезнуть или сменить формат. Митигация: два кандидата, оба конфигурируемы,
   ответ валидируется как IP; сбой некритичен (динамическая запись denylist просто
   устаревает).

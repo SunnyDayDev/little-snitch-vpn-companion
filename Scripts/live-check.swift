@@ -189,11 +189,15 @@ struct LiveCheck {
         }
     }
 
+    /// Как `RuBeaconProber`: напрямую, мимо системного прокси, и только
+    /// глобально маршрутизируемый ответ — `127.0.0.1` от локального прокси
+    /// отбрасывается с пометкой.
     static func fetchDirectIP() async -> IPAddress? {
-        for urlString in ["https://yandex.ru/internet/api/v0/ip", "https://2ip.ru"] {
+        for urlString in ["https://yandex.ru/internet/api/v0/ip", "https://ip.beget.ru"] {
             guard let url = URL(string: urlString) else { continue }
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 6
+            configuration.connectionProxyDictionary = [:]
             let session = URLSession(configuration: configuration)
             defer { session.finishTasksAndInvalidate() }
             var request = URLRequest(url: url)
@@ -201,7 +205,12 @@ struct LiveCheck {
             guard let (data, response) = try? await session.data(for: request),
                   let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let text = String(data: data, encoding: .utf8) else { continue }
-            if let ip = PlainIPParser.parse(text) { return ip }
+            guard let ip = PlainIPParser.parse(text) else { continue }
+            guard ip.isGloballyRoutable else {
+                print("РУ-маяк \(urlString) вернул немаршрутизируемый адрес \(ip.text) — ответ отброшен")
+                continue
+            }
+            return ip
         }
         return nil
     }

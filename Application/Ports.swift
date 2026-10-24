@@ -16,10 +16,25 @@ protocol BeaconProbing: Sendable {
     func fetchTrace(for detector: DetectorConfig, timeout: Double) async -> BeaconFetch
 }
 
+/// Ответ РУ-маяков: первый годный прямой IP и немаршрутизируемые ответы,
+/// отброшенные по пути (`127.0.0.1` от локального прокси, fake-IP и т.п.) —
+/// о них координатор предупреждает в журнале.
+struct DirectIPResult: Hashable, Sendable {
+    var address: IPAddress?
+    var rejected: [IPAddress] = []
+
+    init(address: IPAddress?, rejected: [IPAddress] = []) {
+        self.address = address
+        self.rejected = rejected
+    }
+}
+
 protocol DirectIPProbing: Sendable {
-    /// Прямой IP текущей сети от РУ-маяка. `nil` — сервис недоступен или ответ
-    /// не является IP-адресом.
-    func fetchDirectIP(timeout: Double) async -> IPAddress?
+    /// Прямой IP текущей сети от РУ-маяка: основной, при отказе или
+    /// немаршрутизируемом ответе — резервный. Запрос идёт напрямую, минуя
+    /// системный прокси macOS и прокси детекторов. `address == nil` — сервисы
+    /// недоступны или ответили не годным адресом.
+    func fetchDirectIP(timeout: Double) async -> DirectIPResult
 }
 
 protocol TripwireMonitoring: Sendable {
