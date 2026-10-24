@@ -1,5 +1,5 @@
-/// Вид rule group Little Snitch. Влияет только на подпись во вкладке
-/// «Группы»: включается и выключается любая группа одинаково — по имени.
+/// Вид rule group Little Snitch. Влияет только на подпись в карточке «Группы»
+/// деталей детектора: включается и выключается любая группа одинаково — по имени.
 enum RuleGroupKind: String, Hashable, Codable {
     /// Встроенная группа Little Snitch («macOS Services», «iCloud Services»).
     case builtin
