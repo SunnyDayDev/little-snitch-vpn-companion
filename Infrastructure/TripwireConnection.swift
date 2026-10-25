@@ -2,29 +2,100 @@ import Foundation
 import Network
 import os
 
-/// «Растяжка» (§4.2, слой 1): постоянное TLS-соединение к маяку. Раз в
-/// `heartbeatSeconds` по нему уходит крошечный запрос с дедлайном чтения 5 с.
-/// Любой обрыв — мгновенный сигнал: перехватчик, терминировавший TCP на себе,
-/// виден сразу, без ожидания плановой пробы.
+/// Куда и что шлёт растяжка детектора: хост и путь — из URL его основного
+/// маяка (D6 design.md), heartbeat — минимальный `GET <путь>` с keep-alive.
+struct TripwireTarget: Hashable, Sendable {
+    let host: String
+    let port: UInt16
+    let path: String
+    let usesTLS: Bool
+
+    init?(beaconURL: String) {
+        guard let url = URL(string: beaconURL),
+              let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              let host = url.host(percentEncoded: false), !host.isEmpty else { return nil }
+        usesTLS = scheme == "https"
+        let defaultPort: UInt16 = usesTLS ? 443 : 80
+        guard let port = url.port.map({ UInt16(exactly: $0) }) ?? defaultPort else { return nil }
+        self.host = host.hasPrefix("[") && host.hasSuffix("]")
+            ? String(host.dropFirst().dropLast()) : host
+        self.port = port
+        let rawPath = url.path(percentEncoded: true)
+        let query = url.query(percentEncoded: true).map { "?\($0)" } ?? ""
+        path = (rawPath.isEmpty ? "/" : rawPath) + query
+        defaultPortOmitted = port == defaultPort
+    }
+
+    private let defaultPortOmitted: Bool
+
+    /// Значение заголовка Host: IPv6 — в скобках, нестандартный порт — явно.
+    var hostHeader: String {
+        let shown = host.contains(":") ? "[\(host)]" : host
+        return defaultPortOmitted ? shown : "\(shown):\(port)"
+    }
+
+    var heartbeatRequest: String {
+        "GET \(path) HTTP/1.1\r\n"
+            + "Host: \(hostHeader)\r\n"
+            + "User-Agent: LSVPNCompanion/1.0\r\n"
+            + "Connection: keep-alive\r\n"
+            + "\r\n"
+    }
+}
+
+/// Растяжки всех детекторов: по соединению на детектор. Смена сети
+/// сбрасывает backoff всех растяжек сразу.
+actor TripwirePool: TripwireMonitoring {
+    private var connections: [DetectorID: TripwireConnection] = [:]
+
+    func start(_ id: DetectorID,
+               beaconURL: String,
+               proxy: ProxyConfig,
+               heartbeatSeconds: Double,
+               onBreak: @escaping @Sendable () -> Void) async {
+        await connections[id]?.stop()
+        // URL, из которого не собрать адрес, растяжки не даёт: детектор
+        // наблюдается только пробами, а проба по такому маяку — Offline.
+        guard let target = TripwireTarget(beaconURL: beaconURL) else {
+            connections[id] = nil
+            return
+        }
+        let connection = connections[id] ?? TripwireConnection()
+        connections[id] = connection
+        await connection.start(target: target, proxy: proxy,
+                               heartbeatSeconds: heartbeatSeconds, onBreak: onBreak)
+    }
+
+    func stop(_ id: DetectorID) async {
+        await connections[id]?.stop()
+        connections[id] = nil
+    }
+
+    func stopAll() async {
+        for connection in connections.values { await connection.stop() }
+        connections.removeAll()
+    }
+
+    func networkPathChanged() async {
+        for connection in connections.values { await connection.networkPathChanged() }
+    }
+}
+
+/// «Растяжка» (§4.2, слой 1): постоянное TLS-соединение к хосту маяка
+/// детектора тем же путём, что и его пробы. Раз в `heartbeatSeconds` по нему
+/// уходит крошечный запрос с дедлайном чтения 5 с. Любой обрыв — мгновенный
+/// сигнал: перехватчик, терминировавший TCP на себе, виден сразу, без
+/// ожидания плановой пробы.
 ///
 /// URLSession здесь не годится: он прячет жизненный цикл соединения
 /// (пулинг, прозрачные реконнекты), а нужен именно сырой сигнал разрыва.
-actor TripwireConnection: TripwireMonitoring {
+actor TripwireConnection {
     private enum TripwireError: Error {
         case readDeadline
         case connectionFailed(String)
         case cancelled
     }
 
-    private static let host = "www.cloudflare.com"
-    private static let request = """
-        GET /cdn-cgi/trace HTTP/1.1\r
-        Host: www.cloudflare.com\r
-        User-Agent: LSVPNCompanion/1.0\r
-        Connection: keep-alive\r
-        \r
-
-        """
     private static let readDeadlineSeconds = 5.0
     private static let maxBackoffSeconds = 60.0
 
@@ -35,6 +106,8 @@ actor TripwireConnection: TripwireMonitoring {
     private var connection: NWConnection?
     private var loop: Task<Void, Never>?
     private var onBreak: (@Sendable () -> Void)?
+    private var target: TripwireTarget?
+    private var proxy = ProxyConfig.direct
     private var heartbeatSeconds = 15.0
     private var backoffSeconds = 0.0
     private var isRunning = false
@@ -42,8 +115,13 @@ actor TripwireConnection: TripwireMonitoring {
     /// сигналить ложный обрыв и гасить уже новое соединение.
     private var generation = 0
 
-    func start(heartbeatSeconds: Double, onBreak: @escaping @Sendable () -> Void) async {
+    func start(target: TripwireTarget,
+               proxy: ProxyConfig,
+               heartbeatSeconds: Double,
+               onBreak: @escaping @Sendable () -> Void) async {
         await stop()
+        self.target = target
+        self.proxy = proxy
         self.heartbeatSeconds = heartbeatSeconds
         self.onBreak = onBreak
         isRunning = true
@@ -109,13 +187,31 @@ actor TripwireConnection: TripwireMonitoring {
     }
 
     private func connect() async throws -> NWConnection {
-        let parameters = NWParameters.tls
+        guard let target, let port = NWEndpoint.Port(rawValue: target.port) else {
+            throw TripwireError.connectionFailed("нет адреса маяка")
+        }
+        let parameters = target.usesTLS ? NWParameters.tls : NWParameters.tcp
         parameters.serviceClass = .responsiveData
-        let connection = NWConnection(host: NWEndpoint.Host(Self.host),
-                                      port: 443,
+        // Тот же путь, что у проб детектора: его прокси или напрямую, без
+        // системных настроек прокси.
+        ProxyRouting.apply(proxy, to: parameters)
+        let connection = NWConnection(host: NWEndpoint.Host(target.host),
+                                      port: port,
                                       using: parameters)
         let gate = ContinuationGate<Void>()
 
+        do {
+            try await waitUntilReady(connection, gate: gate)
+        } catch {
+            // Неудавшееся соединение гасим сами: в ожидании Network.framework
+            // продолжал бы переподключаться в фоне мимо нашего backoff.
+            connection.cancel()
+            throw error
+        }
+        return connection
+    }
+
+    private func waitUntilReady(_ connection: NWConnection, gate: ContinuationGate<Void>) async throws {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 gate.set(continuation)
@@ -125,6 +221,12 @@ actor TripwireConnection: TripwireMonitoring {
                         gate.succeed(())
                     case .failed(let error):
                         gate.fail(TripwireError.connectionFailed(String(describing: error)))
+                    // Отказ прокси (Connection refused) Network.framework
+                    // отдаёт ожиданием, а не ошибкой (живая проверка
+                    // 2026-10-24): без этой ветки растяжка висела бы в
+                    // подключении без backoff и без сигнала обрыва.
+                    case .waiting(let error):
+                        gate.fail(TripwireError.connectionFailed("ожидание: \(error)"))
                     case .cancelled:
                         gate.fail(TripwireError.cancelled)
                     default:
@@ -136,13 +238,12 @@ actor TripwireConnection: TripwireMonitoring {
         } onCancel: {
             connection.cancel()
         }
-
-        return connection
     }
 
     private func heartbeatLoop(_ connection: NWConnection) async throws {
+        let request = target?.heartbeatRequest ?? ""
         while isRunning && !Task.isCancelled {
-            try await send(Self.request, over: connection)
+            try await send(request, over: connection)
             _ = try await receiveWithDeadline(connection)
             try await Task.sleep(for: .seconds(heartbeatSeconds))
         }

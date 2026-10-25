@@ -32,15 +32,20 @@ struct DSPrimaryButton: View {
 
 /// Кнопка вторичная (§8.4): `bg-card` + обводка, текст 12. Неактивная —
 /// третичный цвет текста (атом «Кнопка вторичная неактивная» в макете).
+/// Разрушительное действие («Удалить детектор…») — та же кнопка с красным
+/// заголовком: подтверждение спросит отдельный диалог.
 @MainActor
 struct DSSecondaryButton: View {
     private let title: String
     private let isEnabled: Bool
+    private let titleColor: Color
     private let action: () -> Void
 
-    init(_ title: String, isEnabled: Bool = true, action: @escaping () -> Void) {
+    init(_ title: String, isEnabled: Bool = true, titleColor: Color = DSColor.textPrimary,
+         action: @escaping () -> Void) {
         self.title = title
         self.isEnabled = isEnabled
+        self.titleColor = titleColor
         self.action = action
     }
 
@@ -48,7 +53,7 @@ struct DSSecondaryButton: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12))
-                .foregroundStyle(isEnabled ? DSColor.textPrimary : DSColor.textTertiary)
+                .foregroundStyle(isEnabled ? titleColor : DSColor.textTertiary)
                 .padding(.vertical, DSMetrics.buttonPaddingVertical)
                 .padding(.horizontal, DSSpacing.md)
                 .background(DSColor.bgCard, in: RoundedRectangle(cornerRadius: DSRadius.sm))

@@ -156,13 +156,15 @@ private struct JournalRow: View {
             // бывает в несколько абзацев — ограничиваем строки, чтобы одна
             // запись не растягивала таблицу на пол-экрана; полный текст
             // остаётся в подсказке и в экспорте.
-            Text(JournalFormatting.kind(event.kind))
+            // Имя детектора — префиксом перед текстом: колонок у таблицы
+            // столько же, сколько было, а записи общих слоёв без префикса.
+            Text(JournalFormatting.event(event))
                 .font(.system(size: 12, weight: isEmphasised ? .semibold : .regular))
                 .foregroundStyle(eventColor)
                 .lineLimit(3)
                 .truncationMode(.tail)
                 .multilineTextAlignment(.leading)
-                .help(JournalFormatting.kind(event.kind))
+                .help(JournalFormatting.event(event))
                 .frame(width: DSMetrics.Journal.eventColumn, alignment: .leading)
 
             Text(event.action ?? "—")

@@ -27,7 +27,14 @@ final class SettingsHolder: @unchecked Sendable {
 actor FakeBeacon: BeaconProbing {
     private var queued: [BeaconFetch] = []
     private var fallback: BeaconFetch = .offline(.timeout)
+    /// Ответы конкретного детектора — сильнее общих: так два детектора в
+    /// одном тесте видят разные пути.
+    private var queuedByDetector: [DetectorID: [BeaconFetch]] = [:]
+    private var fallbackByDetector: [DetectorID: BeaconFetch] = [:]
     private(set) var callCount = 0
+    private(set) var callsByDetector: [DetectorID: Int] = [:]
+    /// Через какой прокси ушла последняя проба детектора.
+    private(set) var lastProxy: [DetectorID: ProxyConfig] = [:]
     private var holdNext = false
     private var held: CheckedContinuation<Void, Never>?
     private var callObservers: [AsyncStream<Int>.Continuation] = []
@@ -42,6 +49,16 @@ actor FakeBeacon: BeaconProbing {
     func setFallback(_ fetch: BeaconFetch) {
         fallback = fetch
     }
+
+    func enqueue(_ fetches: BeaconFetch..., for id: DetectorID) {
+        queuedByDetector[id, default: []].append(contentsOf: fetches)
+    }
+
+    func setFallback(_ fetch: BeaconFetch, for id: DetectorID) {
+        fallbackByDetector[id] = fetch
+    }
+
+    func calls(for id: DetectorID) -> Int { callsByDetector[id] ?? 0 }
 
     /// Следующая проба подвиснет в полёте до `release()` — для тестов гонок
     /// «проба против пропажи сети».
@@ -68,8 +85,10 @@ actor FakeBeacon: BeaconProbing {
         return stream
     }
 
-    func fetchTrace(timeout: Double) async -> BeaconFetch {
+    func fetchTrace(for detector: DetectorConfig, timeout: Double) async -> BeaconFetch {
         callCount += 1
+        callsByDetector[detector.id, default: 0] += 1
+        lastProxy[detector.id] = detector.proxy
         for observer in callObservers { observer.yield(callCount) }
         if holdNext {
             holdNext = false
@@ -78,48 +97,87 @@ actor FakeBeacon: BeaconProbing {
                 for observer in holdObservers { observer.yield(()) }
             }
         }
+        if var own = queuedByDetector[detector.id], !own.isEmpty {
+            let next = own.removeFirst()
+            queuedByDetector[detector.id] = own
+            return next
+        }
+        if let own = fallbackByDetector[detector.id] { return own }
         return queued.isEmpty ? fallback : queued.removeFirst()
     }
 }
 
 actor FakeDirectIP: DirectIPProbing {
-    private var answers: [IPAddress?] = []
-    private var fallback: IPAddress?
+    private var answers: [DirectIPResult] = []
+    private var fallback: DirectIPResult
     private(set) var callCount = 0
 
     init(fallback: IPAddress? = nil) {
-        self.fallback = fallback
+        self.fallback = DirectIPResult(address: fallback)
     }
 
     func enqueue(_ values: IPAddress?...) {
-        answers.append(contentsOf: values)
+        answers.append(contentsOf: values.map { DirectIPResult(address: $0) })
     }
 
-    func fetchDirectIP(timeout: Double) async -> IPAddress? {
+    /// Ответ целиком — с отброшенными немаршрутизируемыми адресами.
+    func enqueue(result: DirectIPResult) {
+        answers.append(result)
+    }
+
+    func fetchDirectIP(timeout: Double) async -> DirectIPResult {
         callCount += 1
         return answers.isEmpty ? fallback : answers.removeFirst()
     }
 }
 
 actor FakeTripwire: TripwireMonitoring {
-    private(set) var isStarted = false
-    private(set) var heartbeatSeconds: Double?
-    private var onBreak: (@Sendable () -> Void)?
+    struct Started: Hashable {
+        let beaconURL: String
+        let proxy: ProxyConfig
+        let heartbeatSeconds: Double
+    }
+
+    private(set) var started: [DetectorID: Started] = [:]
+    private(set) var startCount: [DetectorID: Int] = [:]
+    private(set) var pathChangeCount = 0
+    private var onBreak: [DetectorID: @Sendable () -> Void] = [:]
 
     init() {}
 
-    func start(heartbeatSeconds: Double, onBreak: @escaping @Sendable () -> Void) async {
-        isStarted = true
-        self.heartbeatSeconds = heartbeatSeconds
-        self.onBreak = onBreak
+    /// Поднята хотя бы одна растяжка.
+    var isStarted: Bool { !started.isEmpty }
+
+    func isStarted(_ id: DetectorID) -> Bool { started[id] != nil }
+
+    func starts(of id: DetectorID) -> Int { startCount[id] ?? 0 }
+
+    func start(_ id: DetectorID,
+               beaconURL: String,
+               proxy: ProxyConfig,
+               heartbeatSeconds: Double,
+               onBreak: @escaping @Sendable () -> Void) async {
+        started[id] = Started(beaconURL: beaconURL, proxy: proxy, heartbeatSeconds: heartbeatSeconds)
+        startCount[id, default: 0] += 1
+        self.onBreak[id] = onBreak
     }
 
-    func stop() async {
-        isStarted = false
+    func stop(_ id: DetectorID) async {
+        started[id] = nil
+        onBreak[id] = nil
     }
 
-    func simulateBreak() {
-        onBreak?()
+    func stopAll() async {
+        started.removeAll()
+        onBreak.removeAll()
+    }
+
+    func networkPathChanged() async {
+        pathChangeCount += 1
+    }
+
+    func simulateBreak(_ id: DetectorID) {
+        onBreak[id]?()
     }
 }
 
@@ -465,6 +523,11 @@ enum TestData {
     static let foreignIP = IPAddress("203.0.113.40")!
     static let serverIP = IPAddress("198.51.100.10")!
     static let providerIP = IPAddress("192.0.2.30")!
+    /// Выход резидентного прокси — ожидаемый egress детектора через прокси.
+    static let proxyExitIP = IPAddress("198.51.100.40")!
+
+    static let primaryID = DetectorID.primary
+    static let proxyID = DetectorID("proxy-detector")
 
     static let protectedBody = """
         ip=2a09:bac5:4c9c:18f8::3f
@@ -480,12 +543,57 @@ enum TestData {
         loc=RU
         """
 
+    /// Ответ маяка через прокси, когда тот туннелирует: выход прокси.
+    static let proxyProtectedBody = """
+        ip=198.51.100.40
+        warp=off
+        colo=FRA
+        """
+
     static func settings(leakGroups: [String] = ["VPN down"],
                          mode: ProtectionMode = .reactive) -> AppSettings {
         var settings = AppSettings()
-        settings.leakGroups = leakGroups
-        settings.protectionMode = mode
-        settings.forbiddenEgressIPs = ["198.51.100.10"]
+        settings.detectors = [primary(groups: leakGroups, mode: mode)]
+        return settings
+    }
+
+    /// Детектор «Основной» с запрещённым сервером инфраструктуры.
+    static func primary(groups: [String] = ["VPN down"],
+                        mode: ProtectionMode = .reactive) -> DetectorConfig {
+        var detector = DetectorConfig.primary()
+        detector.groups = groups
+        detector.protectionMode = mode
+        detector.forbiddenEgressIPs = ["198.51.100.10"]
+        return detector
+    }
+
+    /// Детектор через SOCKS5 с резидентным выходом: `warp=on` для него —
+    /// чужой путь, защита — только выход прокси.
+    static func proxyDetector(groups: [String] = ["Telegram"],
+                              mode: ProtectionMode = .reactive,
+                              enabled: Bool = true) -> DetectorConfig {
+        DetectorConfig(id: proxyID,
+                       name: "Через резидентный прокси",
+                       isEnabled: enabled,
+                       protectionMode: mode,
+                       proxy: ProxyConfig(kind: .socks5, host: "203.0.113.5", port: 1080),
+                       warpCountsAsProtection: false,
+                       expectedIPs: ["198.51.100.40"],
+                       forbiddenEgressIPs: ["203.0.113.5"],
+                       groups: groups)
+    }
+
+    /// Два детектора: «Основной» без прокси и «Через резидентный прокси».
+    static func twoDetectors(primaryGroups: [String] = ["VPN down"],
+                             primaryMode: ProtectionMode = .reactive,
+                             proxyGroups: [String] = ["Telegram"],
+                             proxyMode: ProtectionMode = .reactive,
+                             proxyEnabled: Bool = true) -> AppSettings {
+        var settings = AppSettings()
+        settings.detectors = [
+            primary(groups: primaryGroups, mode: primaryMode),
+            proxyDetector(groups: proxyGroups, mode: proxyMode, enabled: proxyEnabled),
+        ]
         return settings
     }
 }

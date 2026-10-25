@@ -106,7 +106,7 @@ actor FileJournalStore: JournalStore {
         let time = JournalFormatting.timestamp(event.time)
         var parts = [time]
         if let trigger = event.trigger { parts.append("[\(JournalFormatting.trigger(trigger))]") }
-        parts.append(JournalFormatting.kind(event.kind))
+        parts.append(JournalFormatting.event(event))
         if let ip = event.egressIP { parts.append("egress \(ip)") }
         if let action = event.action { parts.append("— \(action)") }
         return parts.joined(separator: " ")
@@ -149,6 +149,14 @@ enum JournalFormatting {
         case .checking: "Проверка"
         case .paused: "Пауза"
         }
+    }
+
+    /// Текст события с префиксом «[имя]» детектора; записи без детектора —
+    /// общих слоёв и прежних версий — без префикса.
+    static func event(_ event: JournalEvent) -> String {
+        let text = kind(event.kind)
+        guard let detector = event.detector, !detector.isEmpty else { return text }
+        return "[\(detector)] \(text)"
     }
 
     static func kind(_ kind: JournalEvent.Kind) -> String {

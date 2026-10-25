@@ -105,4 +105,156 @@ struct EgressClassifierTests {
         #expect(result == .leakCandidate(BeaconTrace(ip: foreignIP, warp: .unknown, colo: "DME"),
                                          .foreignEgress))
     }
+
+    // MARK: - Правила детектора (дельта egress-detection)
+
+    @Test("Флаг «warp=on считается защитой» выключен: warp=on с чужим адресом → leak")
+    func warpFlagOffMakesWarpForeign() {
+        var criteria = EgressCriteria()
+        criteria.warpCountsAsProtection = false
+        let result = EgressClassifier.classify(trace(cloudflareIP, .on), criteria: criteria)
+        #expect(result == .leakCandidate(trace(cloudflareIP, .on), .foreignEgress))
+    }
+
+    @Test("Флаг выключен, но адрес из EXPECTED_IPS → protected при warp=on")
+    func warpFlagOffStillHonoursExpected() {
+        var criteria = EgressCriteria()
+        criteria.warpCountsAsProtection = false
+        criteria.expectedIPs = [cloudflareIP]
+        let result = EgressClassifier.classify(trace(cloudflareIP, .on), criteria: criteria)
+        #expect(result == .protected(trace(cloudflareIP, .on)))
+    }
+
+    @Test("Флаг выключен: запрещённый адрес по-прежнему даёт диагноз сервера")
+    func warpFlagOffKeepsDenylistDiagnosis() {
+        var criteria = EgressCriteria()
+        criteria.warpCountsAsProtection = false
+        criteria.forbiddenServers = [serverIP]
+        let result = EgressClassifier.classify(trace(serverIP, .on), criteria: criteria)
+        #expect(result == .leakCandidate(trace(serverIP, .on), .forbiddenServer(serverIP)))
+    }
+
+    @Test("Ответ без warp= с адресом из EXPECTED_IPS → protected")
+    func missingWarpWithExpectedIsProtected() {
+        var criteria = EgressCriteria()
+        criteria.expectedIPs = [foreignIP]
+        let result = EgressClassifier.classifyBody("ip=203.0.113.40\ncolo=DME",
+                                                   criteria: criteria)
+        #expect(result == .protected(BeaconTrace(ip: foreignIP, warp: .unknown, colo: "DME")))
+    }
+
+    @Test("Голый IP из EXPECTED_IPS → protected, warp неизвестен")
+    func plainIPExpectedIsProtected() {
+        var criteria = EgressCriteria()
+        criteria.expectedIPs = [IPAddress("198.51.100.40")!]
+        let result = EgressClassifier.classifyBody("\"198.51.100.40\"", format: .plainIP,
+                                                   criteria: criteria)
+        #expect(result == .protected(BeaconTrace(ip: IPAddress("198.51.100.40")!, warp: .unknown)))
+    }
+
+    @Test("Голый IP вне правил → leak: правило warp для него не выполняется никогда")
+    func plainIPForeignIsLeak() {
+        let result = EgressClassifier.classifyBody("203.0.113.40", format: .plainIP,
+                                                   criteria: EgressCriteria())
+        #expect(result == .leakCandidate(BeaconTrace(ip: foreignIP, warp: .unknown), .foreignEgress))
+    }
+
+    @Test("Голый IP из запрещённых → leak с диагнозом сервера")
+    func plainIPForbiddenIsLeak() {
+        var criteria = EgressCriteria()
+        criteria.forbiddenServers = [serverIP]
+        let result = EgressClassifier.classifyBody("198.51.100.10\n", format: .plainIP,
+                                                   criteria: criteria)
+        #expect(result == .leakCandidate(BeaconTrace(ip: serverIP, warp: .unknown),
+                                         .forbiddenServer(serverIP)))
+    }
+
+    @Test("Маяк формата «голый IP» вернул HTML → offline")
+    func plainIPHTMLIsOffline() {
+        let result = EgressClassifier.classifyBody("<html>Ваш IP</html>", format: .plainIP,
+                                                   criteria: EgressCriteria())
+        #expect(result == .offline(.unparsableResponse))
+    }
+
+    @Test("Голый IP в формате cdn-cgi/trace не разбирается → offline")
+    func plainBodyUnderTraceFormatIsOffline() {
+        let result = EgressClassifier.classifyBody("203.0.113.40", format: .cdnCgiTrace,
+                                                   criteria: EgressCriteria())
+        #expect(result == .offline(.unparsableResponse))
+    }
+
+    @Test("Правила двух детекторов независимы: один и тот же egress — разные вердикты")
+    func detectorsRulesAreIndependent() {
+        let detectorA = DetectorConfig(id: DetectorID("a"), name: "A",
+                                       warpCountsAsProtection: false,
+                                       expectedIPs: ["203.0.113.40"])
+        let detectorB = DetectorConfig(id: DetectorID("b"), name: "B",
+                                       warpCountsAsProtection: false)
+        let egress = trace(foreignIP, .off)
+
+        let resultA = EgressClassifier.classify(egress, criteria: detectorA.criteria(directRuIP: nil))
+        let resultB = EgressClassifier.classify(egress, criteria: detectorB.criteria(directRuIP: nil))
+
+        #expect(resultA == .protected(egress))
+        #expect(resultB == .leakCandidate(egress, .foreignEgress))
+    }
+
+    @Test("Прямой IP сети общий: попадает в запрещённые любого детектора")
+    func directRuIPAppliesToEveryDetector() {
+        let detector = DetectorConfig(id: DetectorID("a"), name: "A",
+                                      expectedIPs: ["198.51.100.20"])
+        let result = EgressClassifier.classify(
+            trace(directRuIP, .off), criteria: detector.criteria(directRuIP: directRuIP))
+        #expect(result == .leakCandidate(trace(directRuIP, .off), .directRuIP(directRuIP)))
+    }
+
+    @Test("Глобальный debugIgnoreWarp накладывается на флаг детектора через И",
+          arguments: [(true, false, true), (true, true, false),
+                      (false, false, false), (false, true, false)])
+    func debugLeverCombinesWithFlag(flag: Bool, debug: Bool, protected: Bool) {
+        let detector = DetectorConfig(id: DetectorID("a"), name: "A",
+                                      warpCountsAsProtection: flag)
+        let result = EgressClassifier.classify(
+            trace(cloudflareIP, .on),
+            criteria: detector.criteria(directRuIP: nil, ignoreWarpForDebug: debug))
+        if protected {
+            #expect(result == .protected(trace(cloudflareIP, .on)))
+        } else {
+            #expect(result == .leakCandidate(trace(cloudflareIP, .on), .foreignEgress))
+        }
+    }
+}
+
+/// Разбор ответа маяка по формату (D4 design.md) и голого IP РУ-маяка.
+@Suite("Разбор ответа маяка")
+struct BeaconResponseParserTests {
+    @Test("JSON-строка с IP разбирается")
+    func parsesJSONString() {
+        #expect(PlainIPParser.parse("\"198.51.100.40\"") == IPAddress("198.51.100.40"))
+        #expect(BeaconResponseParser.parse("\"198.51.100.40\"\n", format: .plainIP)
+            == BeaconTrace(ip: IPAddress("198.51.100.40")!, warp: .unknown))
+    }
+
+    @Test("Голый IPv4 и IPv6 с переводом строки разбираются")
+    func parsesBareAddresses() {
+        #expect(PlainIPParser.parse("192.0.2.10\n") == IPAddress("192.0.2.10"))
+        #expect(PlainIPParser.parse("  2001:db8::40\r\n") == IPAddress("2001:db8::40"))
+        #expect(BeaconResponseParser.parse("2001:db8::40", format: .plainIP)?.ip
+            == IPAddress("2001:db8:0:0:0:0:0:40"))
+    }
+
+    @Test("Отбрасывает всё, что не IP", arguments: [
+        "<html><body>Ваш IP</body></html>", "", "\"\"", "не ip", "{\"ip\":\"192.0.2.10\"}",
+    ])
+    func rejectsNonIP(_ body: String) {
+        #expect(PlainIPParser.parse(body) == nil)
+        #expect(BeaconResponseParser.parse(body, format: .plainIP) == nil)
+    }
+
+    @Test("Trace с другого домена за Cloudflare разбирается по тем же полям")
+    func parsesTraceFromAnyCloudflareDomain() {
+        let body = "fl=1\nh=example.com\nip=192.0.2.10\nwarp=off\ncolo=AMS\n"
+        #expect(BeaconResponseParser.parse(body, format: .cdnCgiTrace)
+            == BeaconTrace(ip: IPAddress("192.0.2.10")!, warp: .off, colo: "AMS"))
+    }
 }

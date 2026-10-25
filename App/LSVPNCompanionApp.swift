@@ -73,8 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Иконка строки меню — состояние (§7.5): template-щит, danger-акцент при
-/// утечке, warn — когда трафик закрыт без утечки.
+/// Иконка строки меню — сводное состояние детекторов (§7.5): template-щит,
+/// danger-акцент при утечке, warn — когда трафик закрыт без утечки.
 @MainActor
 private struct MenuBarLabel: View {
     @Environment(AppModel.self) private var model
@@ -96,14 +96,17 @@ private struct MenuBarLabel: View {
             }
     }
 
-    /// Danger — утечка; warn — закрыто/неопределённость (Checking, Paused и
-    /// Offline в строгом режиме); монохром — Protected и Offline в реактивном.
-    /// Под observeOnly warn для Offline врал бы: группы не тронуты (ФТ-10).
+    /// Иконка — по сводному состоянию детекторов. Danger — утечка у любого;
+    /// warn — закрыто/неопределённость (Checking, Paused и Offline, если
+    /// среди детекторов в Offline есть строгий); монохром — Protected и
+    /// Offline только реактивных. Под observeOnly warn для Offline врал бы:
+    /// группы не тронуты (ФТ-10).
     private var accent: Color {
-        switch model.snapshot.state {
+        let overall = model.snapshot.overall
+        return switch overall.state {
         case .leak: DSColor.danger
         case .checking, .paused: DSColor.warn
-        case .offline: model.settings.protectionMode == .strict
+        case .offline: overall.hasStrictClosed
             && !model.settings.observeOnly ? DSColor.warn : Color.primary
         case .protected: Color.primary
         }

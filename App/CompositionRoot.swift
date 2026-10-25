@@ -7,6 +7,9 @@ import Foundation
 enum CompositionRoot {
     static func makeModel() -> AppModel {
         let settingsStore = DefaultsSettingsStore()
+        // Миграция настроек одного детектора — до первого чтения: координатор
+        // и модель должны увидеть уже записанный «Основной».
+        let detectorsOutcome = settingsStore.prepareDetectors()
         let settings = settingsStore.load()
 
         // Проберы читают настройки в момент запроса: debug-рычаги и адреса
@@ -18,9 +21,9 @@ enum CompositionRoot {
         let notifications = UserNotificationsPresenter(journal: journal, clock: SystemClock())
         let coordinator = MonitoringCoordinator(
             settingsProvider: liveSettings,
-            beacon: CloudflareBeaconProber(settingsProvider: liveSettings),
+            beacon: BeaconProber(settingsProvider: liveSettings),
             directIP: RuBeaconProber(settingsProvider: liveSettings),
-            tripwire: TripwireConnection(),
+            tripwire: TripwirePool(),
             path: SystemPathMonitor(),
             power: SystemPowerMonitor(),
             gateway: gateway,
@@ -46,6 +49,7 @@ enum CompositionRoot {
                         gateway: gateway,
                         lifecycle: lifecycle,
                         notifications: notifications,
-                        settings: settings)
+                        settings: settings,
+                        detectorsOutcome: detectorsOutcome)
     }
 }

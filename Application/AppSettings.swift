@@ -5,9 +5,6 @@ struct AppSettings: Hashable, Sendable, Codable {
     var monitoringEnabled = true
     var observeOnly = false
     var escalationEnabled = true
-    /// Режим защиты (ФТ-2). Дефолт — реактивный: обновление не должно молча
-    /// отрезать сеть существующим пользователям.
-    var protectionMode = ProtectionMode.reactive
     var notifyTransitions = true
     var notifyErrors = true
 
@@ -19,32 +16,67 @@ struct AppSettings: Hashable, Sendable, Codable {
     /// Схлопывание шквала событий сетевого пути (§4.2).
     var pathDebounceSeconds = 0.3
 
-    var expectedIPs: [String] = []
-    var leakGroups: [String] = []
-    /// Статическая часть `FORBIDDEN_EGRESS` — серверы инфраструктуры.
-    /// Пуст по умолчанию: выходные узлы у каждого свои, а приложение
-    /// раздаётся другим людям (отклонение от §13 SPEC.md — осознанное).
-    var forbiddenEgressIPs: [String] = []
+    /// Детекторы (D10 design.md): у каждого свои маяк, путь, правила, режим
+    /// защиты и группы. Пустой массив допустим — мониторинг работает
+    /// вхолостую.
+    var detectors: [DetectorConfig] = [.primary()]
 
     var ruBeaconURL = "https://yandex.ru/internet/api/v0/ip"
-    var ruBeaconFallbackURL = "https://2ip.ru"
+    /// Резервный РУ-маяк: голый IP в text/plain. Прежний `https://2ip.ru`
+    /// перестал отвечать адресом (404 «Moved to 2ip.io», а 2ip.io вне зоны
+    /// .ru) — проверено 2026-10-24.
+    var ruBeaconFallbackURL = "https://ip.beget.ru"
     var ruBeaconRefreshSeconds = 300.0
 
     /// Скрытые debug-рычаги для приёмки (§14, сценарии 2–3 и 13–14).
+    /// Глобальные: действуют на все детекторы.
     var debugIgnoreWarp = false
     var debugFakeEgressIP: String?
 
     static let defaultLeakGroupName = "VPN down"
+    /// Мёртвый резервный РУ-маяк прежних версий: сохранённое значение
+    /// заменяется текущим дефолтом при чтении настроек.
+    static let legacyRuBeaconFallbackURL = "https://2ip.ru"
 
-    var mapping: RuleGroupMapping { RuleGroupMapping(leakGroups: leakGroups) }
+    func detector(_ id: DetectorID) -> DetectorConfig? {
+        detectors.first { $0.id == id }
+    }
 
-    /// Критерии классификации, собранные из настроек. Динамический прямой
-    /// РУ-IP подставляет координатор.
-    func criteria(directRuIP: IPAddress?) -> EgressCriteria {
-        EgressCriteria(
-            expectedIPs: Set(expectedIPs.compactMap(IPAddress.init)),
-            forbiddenServers: Set(forbiddenEgressIPs.compactMap(IPAddress.init)),
-            directRuIP: directRuIP,
-            ignoreWarpForDebug: debugIgnoreWarp)
+    var enabledDetectors: [DetectorConfig] { detectors.filter(\.isEnabled) }
+
+    /// Включённые детекторы в строгом режиме: их группы закрываются на сне,
+    /// паузе и завершении и уходят в failsafe helper.
+    var strictDetectors: [DetectorConfig] {
+        enabledDetectors.filter { $0.protectionMode == .strict }
+    }
+
+    /// Объединение групп строгих детекторов (D8 design.md).
+    var failsafeGroups: [String] {
+        Array(Set(strictDetectors.flatMap(\.groups))).sorted()
+    }
+
+    /// Строгий режим действует: есть хоть один включённый строгий детектор,
+    /// и `observeOnly` его не перекрывает (ФТ-10 побеждает).
+    var strictActive: Bool { !strictDetectors.isEmpty && !observeOnly }
+
+    /// Failsafe-конфигурация helper: контракт прежний — плоский список групп,
+    /// о детекторах helper не знает.
+    var failsafeConfig: FailsafeConfig {
+        FailsafeConfig(strictActive: strictActive, groups: failsafeGroups)
+    }
+
+    /// Критерии классификации детектора. Динамический прямой РУ-IP
+    /// подставляет координатор; debug-рычаг глобальный.
+    func criteria(for detector: DetectorConfig, directRuIP: IPAddress?) -> EgressCriteria {
+        detector.criteria(directRuIP: directRuIP, ignoreWarpForDebug: debugIgnoreWarp)
+    }
+
+    /// Детекторы, чей маппинг содержит группу: уведомления и журнал о
+    /// несуществующей группе (включённые), подпись «также в …» (все).
+    func owners(of group: String,
+                excluding id: DetectorID? = nil,
+                enabledOnly: Bool = true) -> [DetectorConfig] {
+        (enabledOnly ? enabledDetectors : detectors)
+            .filter { $0.id != id && $0.groups.contains(group) }
     }
 }
