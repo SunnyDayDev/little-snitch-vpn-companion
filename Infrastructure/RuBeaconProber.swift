@@ -20,7 +20,7 @@ struct RuBeaconProber: DirectIPProbing {
 
     func fetchDirectIP(timeout: Double) async -> DirectIPResult {
         let settings = settingsProvider()
-        var rejected: [IPAddress] = []
+        var rejected: [DirectIPRejection] = []
         for candidate in [settings.ruBeaconURL, settings.ruBeaconFallbackURL] {
             guard let url = URL(string: candidate) else { continue }
             guard Self.isRussianZone(url) else {
@@ -29,9 +29,9 @@ struct RuBeaconProber: DirectIPProbing {
             }
             guard let ip = await fetch(url, timeout: timeout) else { continue }
             // Сервис снаружи не может увидеть loopback, частный или fake-IP
-            // адрес: такой ответ — перехват по пути, пробуем резервный.
+            // адрес: такой ответ — подмена по пути, пробуем резервный.
             guard ip.isGloballyRoutable else {
-                rejected.append(ip)
+                rejected.append(DirectIPRejection(beaconURL: candidate, address: ip))
                 continue
             }
             return DirectIPResult(address: ip, rejected: rejected)
@@ -39,9 +39,11 @@ struct RuBeaconProber: DirectIPProbing {
         return DirectIPResult(address: nil, rejected: rejected)
     }
 
-    /// Сессия РУ-маяка — напрямую: системный прокси macOS (например, Surge
-    /// на 127.0.0.1) отвечал бы за сервис своим адресом, а прокси детекторов
-    /// к прямому IP сети отношения не имеют.
+    /// Сессия РУ-маяка — напрямую: системный прокси macOS и прокси
+    /// детекторов к прямому IP сети отношения не имеют. От прокси-клиента с
+    /// TUN (Surge в расширенном режиме) это не спасает — его маршрутизация
+    /// приложению неподвластна, поэтому ответ ещё и проверяется на
+    /// маршрутизируемость.
     static func sessionConfiguration(timeout: Double) -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData

@@ -292,7 +292,7 @@ struct MultiDetectorCoordinatorTests {
         await harness.coordinator.runProbe(trigger: .startup)
         // Основной РУ-маяк ответил через локальный прокси, резервный — честно
         await harness.directIP.enqueue(result: DirectIPResult(
-            address: TestData.providerIP, rejected: [IPAddress("127.0.0.1")!]))
+            address: TestData.providerIP, rejected: [loopbackFromYandex]))
 
         await harness.coordinator.refreshDirectIP()
 
@@ -307,7 +307,9 @@ struct MultiDetectorCoordinatorTests {
         await bothProtected(harness)
         await harness.coordinator.runProbe(trigger: .startup)
         await harness.directIP.enqueue(result: DirectIPResult(
-            address: nil, rejected: [IPAddress("127.0.0.1")!, IPAddress("198.18.0.7")!]))
+            address: nil, rejected: [loopbackFromYandex,
+                                     DirectIPRejection(beaconURL: "https://ip.beget.ru",
+                                                       address: IPAddress("198.18.0.7")!)]))
 
         await harness.coordinator.refreshDirectIP()
 
@@ -316,6 +318,53 @@ struct MultiDetectorCoordinatorTests {
         #expect(warnings.filter { $0.contains("немаршрутизируемый") }.count == 2)
         // Пробы по РУ-маяку не было: адреса нет — переоценивать нечего
         #expect(await harness.beacon.callCount == 2)
+    }
+
+    private var loopbackFromYandex: DirectIPRejection {
+        DirectIPRejection(beaconURL: "https://yandex.ru/internet/api/v0/ip",
+                          address: IPAddress("127.0.0.1")!)
+    }
+
+    private func rejectionWarnings(_ harness: Harness) async -> [String] {
+        await texts(harness) { if case .warning(let t) = $0 { t } else { nil } }
+            .filter { $0.contains("немаршрутизируемый") }
+    }
+
+    @Test("Повторный тот же немаршрутизируемый ответ журнал не засоряет; новое значение и смена сети — пишутся")
+    func repeatedRejectionIsJournaledOnce() async {
+        let harness = makeHarness()
+        await bothProtected(harness)
+        await harness.coordinator.runProbe(trigger: .startup)
+        let same = DirectIPResult(address: TestData.providerIP, rejected: [loopbackFromYandex])
+
+        // Старт и два плановых обновления — одно предупреждение
+        for _ in 0..<3 {
+            await harness.directIP.enqueue(result: same)
+            await harness.coordinator.refreshDirectIP()
+        }
+        #expect(await rejectionWarnings(harness).count == 1)
+
+        // Новое значение от того же маяка — пишется
+        await harness.directIP.enqueue(result: DirectIPResult(
+            address: TestData.providerIP,
+            rejected: [DirectIPRejection(beaconURL: loopbackFromYandex.beaconURL,
+                                         address: IPAddress("198.18.0.7")!)]))
+        await harness.coordinator.refreshDirectIP()
+        #expect(await rejectionWarnings(harness).count == 2)
+
+        // Фактическая смена сети — прежнее значение пишется снова
+        await harness.directIP.enqueue(result: same)
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi B"))
+        #expect(await rejectionWarnings(harness).count == 3)
+
+        // Плановое обновление в новой сети и повтор события пути с теми же
+        // сведениями — не смена сети, предупреждение не повторяется
+        await harness.directIP.enqueue(result: same)
+        await harness.coordinator.refreshDirectIP()
+        await harness.coordinator.handlePathChange(
+            NetworkPathInfo(isSatisfied: true, interfaceDescription: "Wi-Fi B"))
+        #expect(await rejectionWarnings(harness).count == 3)
     }
 
     @Test("Guard: без вердикта ни одного детектора прямой IP откладывается")

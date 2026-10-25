@@ -16,14 +16,20 @@ protocol BeaconProbing: Sendable {
     func fetchTrace(for detector: DetectorConfig, timeout: Double) async -> BeaconFetch
 }
 
+/// Немаршрутизируемый ответ РУ-маяка и маяк, который его дал.
+struct DirectIPRejection: Hashable, Sendable {
+    let beaconURL: String
+    let address: IPAddress
+}
+
 /// Ответ РУ-маяков: первый годный прямой IP и немаршрутизируемые ответы,
-/// отброшенные по пути (`127.0.0.1` от локального прокси, fake-IP и т.п.) —
-/// о них координатор предупреждает в журнале.
+/// отброшенные по пути (`127.0.0.1`, частный, fake-IP — мусор от
+/// прокси-клиента с TUN и т.п.) — о них координатор предупреждает в журнале.
 struct DirectIPResult: Hashable, Sendable {
     var address: IPAddress?
-    var rejected: [IPAddress] = []
+    var rejected: [DirectIPRejection] = []
 
-    init(address: IPAddress?, rejected: [IPAddress] = []) {
+    init(address: IPAddress?, rejected: [DirectIPRejection] = []) {
         self.address = address
         self.rejected = rejected
     }

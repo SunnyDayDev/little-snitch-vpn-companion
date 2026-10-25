@@ -127,6 +127,11 @@ actor MonitoringCoordinator {
     /// журнала, ни сброса РУ-маяка, ни проб. Сбрасывается на границах сна и
     /// старта мониторинга: за ними сеть могла смениться на неотличимую.
     private var lastHandledPath: NetworkPathInfo?
+    /// Немаршрутизируемые ответы РУ-маяков, о которых уже предупредили в
+    /// этой сети: прокси-клиент с TUN отдаёт один и тот же мусор на каждом
+    /// обновлении (старт, путь, раз в 5 минут), и журнал не должен им
+    /// засоряться. Новое значение или фактическая смена сети — пишется снова.
+    private var journaledRejections: Set<DirectIPRejection> = []
     /// Фоновая петля РУ-маяка — общий слой, живёт, пока мониторинг запущен.
     private var sharedLoops: [Task<Void, Never>] = []
     /// Слои подняты (монитор пути, РУ-маяк, слои детекторов).
@@ -480,6 +485,7 @@ actor MonitoringCoordinator {
         // любых эффектов. Снапшот пути при равенстве уже актуален.
         guard info != lastHandledPath else { return }
         lastHandledPath = info
+        journaledRejections.removeAll()
         snapshotValue.path = info
         // §4.4: ответ РУ-маяка живёт до следующей смены сети — иначе прямой IP
         // прошлой сети остался бы в denylist и дал бы ложную утечку.
@@ -760,10 +766,12 @@ actor MonitoringCoordinator {
     /// и переоценивает их состояние.
     func refreshDirectIP() async {
         let answer = await directIP.fetchDirectIP(timeout: settings.probeTimeoutSeconds)
-        // Немаршрутизируемый ответ — перехват по пути (локальный прокси,
+        // Немаршрутизируемый ответ — подмена по пути (прокси-клиент с TUN,
         // fake-IP DNS): в denylist ему не место, но пользователь должен
-        // узнать, почему прямой IP не определяется.
-        for ip in answer.rejected {
+        // узнать, почему ответ основного маяка не годится. Один раз на
+        // значение маяка в этой сети.
+        for rejection in answer.rejected where journaledRejections.insert(rejection).inserted {
+            let ip = rejection.address
             await journal.append(JournalEvent(
                 time: await clock.now(),
                 trigger: .ruBeacon,
