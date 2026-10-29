@@ -19,9 +19,27 @@ struct EgressCriteria: Hashable {
     var acceptsWarp: Bool { warpCountsAsProtection && !ignoreWarpForDebug }
 }
 
+/// Выполненные критерии защиты для принятой пробы.
+struct ProtectionEvidence: Hashable, Sendable {
+    let expectedIP: IPAddress?
+    let warp: WarpStatus?
+}
+
 /// Чистая классификация: таблица §4.1 SPEC.md. Denylist сильнее всего
 /// остального — совпадение с ним даёт Leak даже при `warp=on`.
 enum EgressClassifier {
+    /// Выполненные критерии, а не все поля ответа. Запрещённый адрес
+    /// перевешивает оба признака защиты, как и при классификации.
+    static func protectionEvidence(_ trace: BeaconTrace,
+                                   criteria: EgressCriteria) -> ProtectionEvidence? {
+        guard criteria.directRuIP != trace.ip,
+              !criteria.forbiddenServers.contains(trace.ip) else { return nil }
+        let ip = criteria.expectedIPs.contains(trace.ip) ? trace.ip : nil
+        let warp = trace.warp.indicatesWarp && criteria.acceptsWarp ? trace.warp : nil
+        guard ip != nil || warp != nil else { return nil }
+        return ProtectionEvidence(expectedIP: ip, warp: warp)
+    }
+
     static func classify(_ trace: BeaconTrace, criteria: EgressCriteria) -> ProbeResult {
         if let directRuIP = criteria.directRuIP, directRuIP == trace.ip {
             return .leakCandidate(trace, .directRuIP(trace.ip))
@@ -31,8 +49,7 @@ enum EgressClassifier {
         }
         // У маяка без поля `warp=` (голый IP) статус `unknown`: эта строка
         // таблицы для него не выполняется никогда.
-        let warpProtects = trace.warp.indicatesWarp && criteria.acceptsWarp
-        if warpProtects || criteria.expectedIPs.contains(trace.ip) {
+        if protectionEvidence(trace, criteria: criteria) != nil {
             return .protected(trace)
         }
         return .leakCandidate(trace, .foreignEgress)
