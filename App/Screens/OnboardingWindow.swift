@@ -94,9 +94,8 @@ struct OnboardingWindow: View {
         .onChange(of: model.helperState.isReady) { _, isReady in
             if isReady { step = max(step, 1) }
         }
-        // В макете завершающей кнопки нет: онбординг закрывается окном.
-        // Закрытие считается прохождением — иначе он всплывал бы каждый запуск.
-        .onDisappear { model.finishOnboarding() }
+        // Завершение отмечает MainWindowReader по фактическому закрытию окна.
+        // Скрытие приложения или сворачивание не завершают онбординг.
     }
 
     private var appIcon: some View {

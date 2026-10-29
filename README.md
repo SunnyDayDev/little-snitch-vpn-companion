@@ -135,7 +135,12 @@ xcodegen generate && xcodebuild -project LittleSnitchVPNCompanion.xcodeproj -sch
 open ~/Library/Developer/Xcode/DerivedData/LittleSnitchVPNCompanion-*/Build/Products/Debug/"Little Snitch VPN Companion.app"
 ```
 
-Приложение живёт только в строке меню (`LSUIElement`), в Dock не появляется.
+Приложение запускается в строке меню (`LSUIElement`). Пока открыто хотя бы одно
+окно настроек, журнала или онбординга, оно также отображается в Dock. Сворачивание
+окна и скрытие приложения сохраняют иконку: через Dock можно вернуться к окну.
+После закрытия последнего окна приложение убирает активное присутствие из Dock,
+а мониторинг продолжает работать. «Настройки…» и «Журнал…» закрывают выпадающее
+меню и выводят выбранное окно на передний план.
 
 ### Установка
 
