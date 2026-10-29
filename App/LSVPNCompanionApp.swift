@@ -1,40 +1,39 @@
 import AppKit
 import SwiftUI
 
-enum WindowID {
-    static let settings = "settings"
-    static let journal = "journal"
-    static let onboarding = "onboarding"
-}
-
 @main
 struct LSVPNCompanionApp: App {
     @State private var model = CompositionRoot.makeModel()
+    @State private var windows = WindowCoordinator.live()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarPopover().environment(model)
+            MenuBarPopover().environment(model).environment(windows)
         } label: {
             // Мониторинг запускается отсюда, а не из поповера: содержимое
             // поповера создаётся лишь при открытии, а лейбл живёт с запуска.
-            MenuBarLabel().environment(model)
+            MenuBarLabel().environment(model).environment(windows)
         }
         .menuBarExtraStyle(.window)
 
         // Заголовки окон — как в макетах `design/app.pen`.
-        Window("Little Snitch VPN Companion — Настройки", id: WindowID.settings) {
+        Window("Little Snitch VPN Companion — Настройки", id: WindowID.settings.rawValue) {
             SettingsWindow().environment(model)
+                .background(MainWindowReader(id: .settings, coordinator: windows))
         }
         .windowResizability(.contentSize)
 
-        Window("Журнал", id: WindowID.journal) {
+        Window("Журнал", id: WindowID.journal.rawValue) {
             JournalWindow().environment(model)
+                .background(MainWindowReader(id: .journal, coordinator: windows))
         }
         .windowResizability(.contentSize)
 
-        Window("Добро пожаловать", id: WindowID.onboarding) {
+        Window("Добро пожаловать", id: WindowID.onboarding.rawValue) {
             OnboardingWindow().environment(model)
+                .background(MainWindowReader(id: .onboarding, coordinator: windows,
+                                             onClose: model.finishOnboarding))
         }
         .windowResizability(.contentSize)
         // В макете у окна онбординга только светофор, без строки заголовка.
@@ -42,9 +41,8 @@ struct LSVPNCompanionApp: App {
     }
 }
 
-/// Делегат приложения существует ради одного: перехватить завершение
-/// (⌘Q, logout, выключение) и в строгом режиме успеть закрыть группы
-/// до смерти процесса.
+/// Делегат возвращает окна из Dock и перехватывает завершение процесса,
+/// чтобы в строгом режиме успеть закрыть группы до выхода.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Модель попадает сюда из `.task` лейбла строки меню: делегат создаётся
@@ -52,6 +50,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// её через инициализатор нельзя. Ссылка слабая — делегат живёт дольше
     /// сцен и не должен продлевать модели жизнь.
     static weak var model: AppModel?
+    static weak var windows: WindowCoordinator?
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows flag: Bool) -> Bool {
+        // Координатор восстанавливает существующее окно; стандартная обработка
+        // нужна только при отсутствии зарегистрированных основных окон.
+        !(Self.windows?.reopenFromDock() ?? false)
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication)
         -> NSApplication.TerminateReply {
@@ -78,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 private struct MenuBarLabel: View {
     @Environment(AppModel.self) private var model
+    @Environment(WindowCoordinator.self) private var windows
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -89,9 +100,10 @@ private struct MenuBarLabel: View {
                 // Делегат узнаёт о модели там же, где стартует мониторинг:
                 // лейбл — единственная вью, живущая с запуска приложения.
                 AppDelegate.model = model
+                AppDelegate.windows = windows
                 await model.start()
                 if model.isOnboardingPresented {
-                    openWindow(id: WindowID.onboarding)
+                    windows.open(.onboarding) { openWindow(id: $0.rawValue) }
                 }
             }
     }

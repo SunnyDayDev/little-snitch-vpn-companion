@@ -510,13 +510,6 @@ final class AppModel {
         NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Little Snitch.app"))
     }
 
-    /// Приложение живёт в строке меню (`LSUIElement`), поэтому открытое окно
-    /// само не выходит на передний план — его нужно активировать вручную,
-    /// иначе кажется, что кнопка не сработала.
-    func activateApp() {
-        NSApplication.shared.activate()
-    }
-
     /// Автозапуск включается именно здесь (§13: `launchAtLogin=true` после
     /// онбординга) — до этого регистрировать login item не за что.
     func finishOnboarding() {

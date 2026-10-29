@@ -4,6 +4,8 @@ import SwiftUI
 @MainActor
 struct MenuBarPopover: View {
     @Environment(AppModel.self) private var model
+    @Environment(WindowCoordinator.self) private var windows
+    @State private var popover = PopoverWindowReference()
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -55,12 +57,10 @@ struct MenuBarPopover: View {
                     Task { await model.togglePause() }
                 }
                 DSMenuItem(icon: "list.bullet.rectangle", title: "Журнал…") {
-                    openWindow(id: WindowID.journal)
-                    model.activateApp()
+                    windows.open(.journal, from: popover.window) { openWindow(id: $0.rawValue) }
                 }
                 DSMenuItem(icon: "gearshape", title: "Настройки…") {
-                    openWindow(id: WindowID.settings)
-                    model.activateApp()
+                    windows.open(.settings, from: popover.window) { openWindow(id: $0.rawValue) }
                 }
             }
             .padding(DSMetrics.Popover.menuPadding)
@@ -74,6 +74,7 @@ struct MenuBarPopover: View {
         }
         .frame(width: DSMetrics.Popover.width)
         .background(DSColor.bgPopover)
+        .background(PopoverWindowReader(reference: popover))
     }
 
     /// Метка строки зависит от того, кто виноват: helper или сам Little Snitch.

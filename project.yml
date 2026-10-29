@@ -148,6 +148,17 @@ targets:
         CURRENT_PROJECT_VERSION: 6
         MARKETING_VERSION: "1.0"
 
+  AppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - App/Windows
+      - Tests/AppTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion.apptests
+        GENERATE_INFOPLIST_FILE: YES
+
   DomainTests:
     type: bundle.unit-test
     platform: macOS
@@ -215,6 +226,7 @@ schemes:
       config: Debug
       gatherCoverageData: false
       targets:
+        - AppTests
         - DomainTests
         - ApplicationTests
         - HelperTests
@@ -229,6 +241,7 @@ schemes:
   Tests:
     build:
       targets:
+        AppTests: [test]
         DomainTests: [test]
         ApplicationTests: [test]
         HelperTests: [test]
@@ -237,6 +250,7 @@ schemes:
       config: Debug
       gatherCoverageData: false
       targets:
+        - AppTests
         - DomainTests
         - ApplicationTests
         - HelperTests
