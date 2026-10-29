@@ -10,6 +10,7 @@ struct DetectorSnapshot: Hashable, Sendable, Identifiable {
     var state: EgressState = .offline
     var trace: BeaconTrace?
     var diagnosis: LeakDiagnosis?
+    var explanation: DetectorStatusExplanation = .none
     var lastCheck: Instant?
     var lastTrigger: ProbeTrigger?
     /// Растяжка детектора поднята — для инфо-строки «Проверка».
@@ -70,6 +71,9 @@ actor MonitoringCoordinator {
         /// через `settingsChanged()`, где выполняются переходные reconcile.
         var config: DetectorConfig
         var machine = StateMachine()
+        var explanation: DetectorStatusExplanation = .none
+        var explanationContext: StatusExplanationContext?
+        var hasOfflineProbe = false
         /// Номер последней запущенной пробы из общего счётчика: вердикт
         /// устаревшей пробы применять нельзя — иначе поздний protected снимет
         /// уже подтверждённую утечку. Счётчик общий, чтобы проба, ушедшая до
@@ -238,6 +242,7 @@ actor MonitoringCoordinator {
     }
 
     func stop() async {
+        clearExplanations()
         isRunning = false
         isActive = false
         pausedCloseRetry?.cancel()
@@ -487,6 +492,7 @@ actor MonitoringCoordinator {
         lastHandledPath = info
         journaledRejections.removeAll()
         snapshotValue.path = info
+        clearExplanations()
         // §4.4: ответ РУ-маяка живёт до следующей смены сети — иначе прямой IP
         // прошлой сети остался бы в denylist и дал бы ложную утечку.
         snapshotValue.directRuIP = nil
@@ -708,9 +714,12 @@ actor MonitoringCoordinator {
 
         let settings = settings
         guard let detector = settings.detector(id) ?? runtimes[id]?.config else { return }
+        let criteria = settings.criteria(for: detector, directRuIP: snapshotValue.directRuIP)
+        let context = StatusExplanationContext(beacon: detector.beacon, proxy: detector.proxy,
+                                               criteria: criteria)
         let result = await evaluateProbe.run(
             detector: detector,
-            criteria: settings.criteria(for: detector, directRuIP: snapshotValue.directRuIP),
+            criteria: criteria,
             timeout: settings.probeTimeoutSeconds)
         let now = await clock.now()
 
@@ -722,7 +731,7 @@ actor MonitoringCoordinator {
         runtimes[id]?.lastCheck = now
         runtimes[id]?.lastTrigger = trigger
 
-        guard let effects = handle(id, .probed(result, trigger: trigger)),
+        guard let effects = handle(id, .probed(result, trigger: trigger), probeContext: context),
               let state = runtimes[id]?.machine.state else { return }
         publish()
 
@@ -822,11 +831,63 @@ actor MonitoringCoordinator {
     // MARK: - Исполнение эффектов
 
     /// Событие в машину детектора. `nil` — детектора нет (выключен).
-    private func handle(_ id: DetectorID, _ event: StateMachine.Event) -> [StateMachine.Effect]? {
+    private func handle(_ id: DetectorID, _ event: StateMachine.Event,
+                        probeContext: StatusExplanationContext? = nil) -> [StateMachine.Effect]? {
         guard var runtime = runtimes[id] else { return nil }
+        let previous = runtime.machine.state
         let effects = runtime.machine.handle(event, mode: runtime.config.protectionMode)
+        switch event {
+        case .probed(let result, _) where previous != .paused:
+            if probeContext == currentExplanationContext(for: runtime.config) {
+                switch result {
+                case .protected(let trace) where runtime.machine.state == .protected:
+                    if let criteria = probeContext?.criteria,
+                       let evidence = EgressClassifier.protectionEvidence(trace, criteria: criteria) {
+                        runtime.explanation = .protected(evidence)
+                        runtime.explanationContext = probeContext
+                    }
+                case .leakCandidate(let trace, let diagnosis) where runtime.machine.state == .leak:
+                    runtime.explanation = .leak(trace.ip, diagnosis)
+                    runtime.explanationContext = probeContext
+                case .offline:
+                    runtime.explanation = .none
+                    runtime.explanationContext = probeContext
+                    runtime.hasOfflineProbe = true
+                default: break
+                }
+            } else {
+                runtime.explanation = .none
+                runtime.explanationContext = nil
+                runtime.hasOfflineProbe = false
+            }
+        case .started, .userResumed, .userPaused, .pathDown, .pathShifted:
+            runtime.explanation = .none
+            runtime.explanationContext = nil
+            runtime.hasOfflineProbe = false
+        default: break
+        }
+        if runtime.machine.state == .checking || runtime.machine.state == .paused {
+            runtime.explanation = .none
+            runtime.explanationContext = nil
+        }
         runtimes[id] = runtime
         return effects
+    }
+
+    private func currentExplanationContext(for config: DetectorConfig) -> StatusExplanationContext {
+        let configuration = settings
+        let current = configuration.detector(config.id) ?? config
+        return StatusExplanationContext(
+            beacon: current.beacon, proxy: current.proxy,
+            criteria: configuration.criteria(for: current, directRuIP: snapshotValue.directRuIP))
+    }
+
+    private func clearExplanations() {
+        for id in Array(runtimes.keys) {
+            runtimes[id]?.explanation = .none
+            runtimes[id]?.explanationContext = nil
+            runtimes[id]?.hasOfflineProbe = false
+        }
     }
 
     /// Событие одному детектору: журнал перехода, снапшот, эффекты.
@@ -1125,17 +1186,27 @@ actor MonitoringCoordinator {
     }
 
     private func rebuildSnapshot() {
+        // Скрытый debug-флаг может измениться без settingsChanged().
+        // Сброс липкий: возврат старой настройки не оживляет старую пробу.
+        for (id, runtime) in runtimes {
+            if let context = runtime.explanationContext,
+               context != currentExplanationContext(for: runtime.config) {
+                runtimes[id]?.explanation = .none
+                runtimes[id]?.explanationContext = nil
+                runtimes[id]?.hasOfflineProbe = false
+            }
+        }
         var detectors: [DetectorSnapshot] = appliedDetectors.map { config in
             guard let runtime = runtimes[config.id] else {
                 return DetectorSnapshot(id: config.id, name: config.name, isEnabled: false,
                                         mode: config.protectionMode, proxy: config.proxy,
                                         groups: config.groups)
             }
-            return Self.snapshot(of: runtime)
+            return snapshot(of: runtime)
         }
         let listed = Set(detectors.map(\.id))
         for id in orderedIDs where !listed.contains(id) {
-            if let runtime = runtimes[id] { detectors.append(Self.snapshot(of: runtime)) }
+            if let runtime = runtimes[id] { detectors.append(snapshot(of: runtime)) }
         }
         snapshotValue.detectors = detectors
         snapshotValue.overall = AggregateStatus.summarize(
@@ -1145,8 +1216,15 @@ actor MonitoringCoordinator {
         snapshotValue.helperUnavailable = helperUnavailable
     }
 
-    private static func snapshot(of runtime: DetectorRuntime) -> DetectorSnapshot {
-        DetectorSnapshot(id: runtime.config.id,
+    private func snapshot(of runtime: DetectorRuntime) -> DetectorSnapshot {
+        let explanation: DetectorStatusExplanation
+        if runtime.machine.state == .offline {
+            explanation = .offline(snapshotValue.path?.isSatisfied == false ? .noNetwork
+                : runtime.hasOfflineProbe ? .beaconUnavailable : .unknown)
+        } else {
+            explanation = runtime.explanation
+        }
+        return DetectorSnapshot(id: runtime.config.id,
                          name: runtime.config.name,
                          isEnabled: true,
                          mode: runtime.config.protectionMode,
@@ -1155,6 +1233,7 @@ actor MonitoringCoordinator {
                          state: runtime.machine.state,
                          trace: runtime.machine.lastTrace,
                          diagnosis: runtime.machine.lastDiagnosis,
+                         explanation: explanation,
                          lastCheck: runtime.lastCheck,
                          lastTrigger: runtime.lastTrigger,
                          tripwireActive: runtime.tripwireSignature != nil)

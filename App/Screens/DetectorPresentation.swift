@@ -34,24 +34,9 @@ enum DetectorPresentation {
         }
     }
 
-    /// Состояние с egress для строки блока «Детекторы» в поповере.
-    static func stateText(for detector: DetectorSnapshot) -> String {
-        guard detector.isEnabled else { return "выключен" }
-        switch detector.state {
-        case .protected:
-            guard let trace = detector.trace else { return "защищён" }
-            var parts = ["защищён", trace.ip.text]
-            if trace.warp.indicatesWarp { parts.append("warp=\(trace.warp.rawValue)") }
-            return parts.joined(separator: " · ")
-        case .leak:
-            return detector.trace.map { "утечка · \($0.ip.text)" } ?? "утечка"
-        case .checking:
-            return "проверка · ждём вердикт"
-        case .offline:
-            return detector.mode == .strict ? "офлайн · закрыто" : "офлайн"
-        case .paused:
-            return "пауза"
-        }
+    /// Краткий статус с основаниями принятого состояния.
+    static func stateText(for detector: DetectorSnapshot, observeOnly: Bool = false) -> String {
+        MenuStatusText.detectorState(for: detector, observeOnly: observeOnly)
     }
 
     static func stateColor(for detector: DetectorSnapshot) -> Color {

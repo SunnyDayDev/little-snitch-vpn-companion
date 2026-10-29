@@ -32,12 +32,12 @@ struct DSStatusHeader: View {
         DSStatusHeader(
             state: .protected,
             title: "Защищено",
-            subtitle: "egress 104.28.200.5 · warp=on · AMS"
+            subtitle: "warp=on"
         )
         DSStatusHeader(
             state: .leak,
             title: "Утечка",
-            subtitle: "egress 203.0.113.5 — трафик идёт напрямую"
+            subtitle: "203.0.113.5 — полный обход VPN: прямой IP сети"
         )
     }
     .frame(width: 320, alignment: .leading)
@@ -50,12 +50,12 @@ struct DSStatusHeader: View {
         DSStatusHeader(
             state: .protected,
             title: "Защищено",
-            subtitle: "egress 104.28.200.5 · warp=on · AMS"
+            subtitle: "warp=on"
         )
         DSStatusHeader(
             state: .leak,
             title: "Утечка",
-            subtitle: "egress 203.0.113.5 — трафик идёт напрямую"
+            subtitle: "203.0.113.5 — полный обход VPN: прямой IP сети"
         )
     }
     .frame(width: 320, alignment: .leading)
