@@ -36,6 +36,7 @@ codesign --verify --strict "$DEST" || { echo "Подпись поврежден�
 "$LSREG" -f -R -trusted "$DEST" >/dev/null 2>&1 || true
 
 echo "Установлено: $DEST"
+echo "CLI статуса: $DEST/Contents/MacOS/lsvpn"
 open "$DEST"
 echo
 echo "Если менялся helper — нажми Настройки → Общие → «Переустановить…»"

@@ -56,6 +56,11 @@ struct StatusExplanationTests {
         #expect(await explanation(harness) == protected)
         // Сырой trace уже обновлён: UI обязан брать отдельное основание.
         #expect(await harness.coordinator.snapshot.trace?.ip == TestData.foreignIP)
+        let status = try? await harness.coordinator.readStatus(detectorID: id.rawValue)
+        #expect(status?.detector?.state == .protected)
+        if case .protected(let expectedIP, _) = status?.detector?.explanation {
+            #expect(expectedIP == ip.text)
+        } else { Issue.record("CLI потерял принятое основание Protected") }
         await clock.advance(by: 3)
         await task.value
         #expect(await explanation(harness) == .leak(TestData.foreignIP, .foreignEgress))
@@ -118,6 +123,8 @@ struct StatusExplanationTests {
         harness.settings.set(updated)
         if change != 3 { await harness.coordinator.settingsChanged() }
         #expect(await explanation(harness) == DetectorStatusExplanation.none)
+        let status = try? await harness.coordinator.readStatus(detectorID: id.rawValue)
+        #expect(status?.detector?.explanation == nil)
         harness.settings.set(original)
         #expect(await explanation(harness) == DetectorStatusExplanation.none)
         #expect(await harness.beacon.callCount == 1)

@@ -104,6 +104,7 @@ actor MonitoringCoordinator {
     /// ним считается дифф в `settingsChanged()` и порядок снапшота.
     private var appliedDetectors: [DetectorConfig]
     private var appliedObserveOnly: Bool
+    private var appliedMonitoringEnabled: Bool
     private var snapshotValue = MonitoringSnapshot()
 
     /// Настройки читаются в момент использования: скрытые debug-рычаги §14
@@ -206,11 +207,22 @@ actor MonitoringCoordinator {
         runtimes = initialRuntimes
         appliedDetectors = initial.detectors
         appliedObserveOnly = initial.observeOnly
+        appliedMonitoringEnabled = initial.monitoringEnabled
     }
 
     var snapshot: MonitoringSnapshot {
         rebuildSnapshot()
         return snapshotValue
+    }
+
+    /// После чтения часов все поля копируются без межакторного ожидания.
+    func readStatus(detectorID: String? = nil) async throws -> StatusDocument {
+        let now = await clock.now()
+        rebuildSnapshot()
+        return try DetectorStatusReader.make(
+            snapshot: snapshotValue, monitoring: !appliedMonitoringEnabled ? .stopped
+                : isPaused ? .paused : isRunning ? .running : .stopped,
+            observeOnly: appliedObserveOnly, capturedAt: now, detectorID: detectorID)
     }
 
     func observe(_ handler: @escaping @Sendable (MonitoringSnapshot) -> Void) -> Int {
@@ -402,6 +414,7 @@ actor MonitoringCoordinator {
         let observeToggled = appliedObserveOnly != settings.observeOnly
         appliedDetectors = settings.detectors
         appliedObserveOnly = settings.observeOnly
+        appliedMonitoringEnabled = settings.monitoringEnabled
         publish()
 
         // Исполнение плана.

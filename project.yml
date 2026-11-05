@@ -29,6 +29,7 @@ targets:
     sources:
       - App
       - Application
+      - StatusProtocol
       - Domain
       - Infrastructure
       - path: Helper/HelperProtocol.swift
@@ -54,10 +55,21 @@ targets:
         CURRENT_PROJECT_VERSION: 6
         MARKETING_VERSION: "1.0"
     dependencies:
+      - target: lsvpn
+        link: false
+        embed: false
       - target: Helper
         link: false
         embed: false
     postBuildScripts:
+      - name: Embed status CLI
+        script: |
+          set -euo pipefail
+          ditto "${BUILT_PRODUCTS_DIR}/lsvpn" "${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/MacOS/lsvpn"
+        inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/lsvpn
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/MacOS/lsvpn
       - name: Embed privileged helper
         # Копируем до финальной подписи таргета: бинарь демона в Contents/MacOS,
         # launchd-plist в Contents/Library/LaunchDaemons (контракт SMAppService.daemon)
@@ -125,6 +137,38 @@ targets:
           - $(SRCROOT)/App/AppIcon.icon/Assets/Foreground.png
           - $(SRCROOT)/Scripts/pack_icns.py
 
+  lsvpn:
+    type: tool
+    platform: macOS
+    sources:
+      - CLI
+      - StatusProtocol
+      - path: Infrastructure/StatusEndpoint.swift
+      - path: Infrastructure/StatusSocket.swift
+      - path: Infrastructure/StatusClient.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion.cli
+        PRODUCT_NAME: lsvpn
+        GENERATE_INFOPLIST_FILE: YES
+
+  CLITests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: CLI
+        excludes:
+          - main.swift
+      - StatusProtocol
+      - path: Infrastructure/StatusEndpoint.swift
+      - path: Infrastructure/StatusSocket.swift
+      - path: Infrastructure/StatusClient.swift
+      - Tests/CLITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.sunnyday.lsvpncompanion.clitests
+        GENERATE_INFOPLIST_FILE: YES
+
   Helper:
     type: tool
     platform: macOS
@@ -176,6 +220,7 @@ targets:
     sources:
       - Domain
       - Application
+      - StatusProtocol
       # Ports.swift ссылается на FailsafeConfig — тип шарится с helper
       - path: Helper/FailsafeConfig.swift
       - Tests/ApplicationTests
@@ -206,6 +251,7 @@ targets:
     sources:
       - Domain
       - Application
+      - StatusProtocol
       - Infrastructure
       - path: Helper/HelperProtocol.swift
       - path: Helper/FailsafeConfig.swift
@@ -220,12 +266,14 @@ schemes:
     build:
       targets:
         LittleSnitchVPNCompanion: all
+        lsvpn: all
     run:
       config: Debug
     test:
       config: Debug
       gatherCoverageData: false
       targets:
+        - CLITests
         - AppTests
         - DomainTests
         - ApplicationTests
@@ -241,6 +289,8 @@ schemes:
   Tests:
     build:
       targets:
+        lsvpn: [test]
+        CLITests: [test]
         AppTests: [test]
         DomainTests: [test]
         ApplicationTests: [test]
@@ -250,6 +300,7 @@ schemes:
       config: Debug
       gatherCoverageData: false
       targets:
+        - CLITests
         - AppTests
         - DomainTests
         - ApplicationTests
