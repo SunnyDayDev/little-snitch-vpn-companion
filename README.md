@@ -330,12 +330,14 @@ Application/    use cases и порты (протоколы)
 Domain/         чистый Swift без Apple-фреймворков: state machine, классификатор, политика
 Infrastructure/ проберы, растяжка, XPC-клиент, журнал, настройки, Wi-Fi
 Helper/         привилегированный демон (root) + XPC-контракт
-Tests/          DomainTests, ApplicationTests, HelperTests, InfrastructureTests
+CLI/            терминальная команда lsvpn: аргументы и вывод статуса
+StatusProtocol/ общий версионированный контракт локального статуса
+Tests/          AppTests, DomainTests, ApplicationTests, HelperTests, InfrastructureTests, CLITests
 Scripts/        живые проверки детектора, установка, проверка чистоты Domain
 ```
 
 Зависимости идут только внутрь: `Domain` не знает ни о чём, `Application` — только о
-`Domain` и своих портах, `Infrastructure` и `App` подставляют реализации в
+`Domain`, своих портах и общем контракте `StatusProtocol`, `Infrastructure` и `App` подставляют реализации в
 [App/CompositionRoot.swift](App/CompositionRoot.swift).
 
 ### Привилегированный helper
@@ -611,3 +613,154 @@ Objective Development не используются. Все размеры 16–
 
 [MIT](LICENSE). Little Snitch — продукт [Objective Development](https://www.obdev.at/);
 этот проект с ними не аффилирован.
+
+
+## CLI статуса детекторов
+
+В готовом бандле поставляется универсальный `Contents/MacOS/lsvpn` для macOS 15.7+.
+Команда читает снимок **работающего приложения текущего пользователя**: запрос
+не запускает приложение, новую сетевую проверку или согласование групп LS.
+Доступность helper не обязательна для чтения статуса.
+
+Прямой вызов после установки в пользовательский каталог (путь с пробелами — в кавычках):
+
+```bash
+"$HOME/Applications/Little Snitch VPN Companion.app/Contents/MacOS/lsvpn" status
+```
+
+Чтобы вызывать `lsvpn` по имени, явно создайте пользовательскую ссылку и добавьте
+каталог в PATH. Приложение и установочный скрипт сами ссылки не создают и
+существующие команды не перезаписывают:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+ln -s "$HOME/Applications/Little Snitch VPN Companion.app/Contents/MacOS/lsvpn" "$HOME/.local/bin/lsvpn"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Строку `export` можно добавить в `~/.zshrc`. При другом месте установки укажите
+фактический путь бандла. После переноса приложения обновите собственную ссылку;
+`ln -s` без `-f` специально откажется перезаписывать уже существующий файл.
+
+```bash
+lsvpn status
+lsvpn status --json
+lsvpn status --detector <id>
+lsvpn status --detector <id> --json
+lsvpn status --json --detector <id>
+lsvpn status --help
+```
+
+`<id>` заменяется полным ID из общего списка, включая ID выключенного детектора.
+Имена не уникальны; выбор по имени, индексу и префиксу не поддерживается. Без
+`--json` вывод на русском содержит сводку, полный ID и имя каждого детектора,
+состояние и его основание, режим, давность проверки, активность растяжки,
+назначенные группы и общий контекст мониторинга. Выключенный детектор — отдельный
+статус, отсутствие проверки обозначается «ещё не проверялся».
+
+JSON версии 1 для общего запроса имеет форму:
+
+```json
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-05T06:00:00.000Z",
+  "monitoring": "stopped",
+  "observeOnly": false,
+  "helperUnavailable": false,
+  "groups": {"known": false, "active": null},
+  "overall": {
+    "state": "offline",
+    "culpritID": null,
+    "hasEnabledDetectors": false,
+    "hasStrictClosed": false
+  },
+  "detectors": []
+}
+```
+
+При выборе детектора поля `overall` и `detectors` отсутствуют. Пример ответа
+`lsvpn status --detector 00000000-0000-4000-8000-000000000001 --json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-05T06:00:00.000Z",
+  "monitoring": "running",
+  "observeOnly": false,
+  "helperUnavailable": false,
+  "groups": {"known": true, "active": []},
+  "detector": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "name": "Основной",
+    "isEnabled": true,
+    "mode": "reactive",
+    "state": "protected",
+    "explanation": {"kind": "protected", "expectedIP": "198.51.100.40", "warp": null},
+    "lastCheck": "2026-11-05T05:59:30.000Z",
+    "tripwireActive": true,
+    "assignedGroups": ["VPN down"]
+  }
+}
+```
+
+`capturedAt` — абсолютное время снимка, `lastCheck` — время последней проверки,
+которое может быть давним или `null`. Все времена — UTC ISO 8601 с миллисекундами.
+Результат не обещает свежую сетевую пробу. `monitoring` принимает `running`,
+`paused` (пауза при включённом общем тумблере), `stopped` (общий тумблер выключен
+или мониторинг ещё не запущен); оба способа остановки сохраняют прежнюю политику
+защиты детекторов. `mode` — `reactive`, `strict`; `state` — `protected`, `leak`,
+`offline`, `checking`, `paused`, `disabled`. В `overall` значения `disabled` нет,
+`culpritID` — ID детектора, определившего сводный статус, либо `null`.
+
+`explanation` — достоверное основание **принятого** состояния, либо `null`:
+
+- `protected`: `expectedIP` и `warp` (`on`/`plus`) содержат только участвовавшие
+  признаки защиты, неучаствующие поля — `null`;
+- `leak`: `ip` и `diagnosis` (`forbiddenServer`, `directRuIP`, `foreignEgress`);
+- `offline`: `cause` (`noNetwork`, `beaconUnavailable`, `unknown`).
+
+Первая подозрительная проба не подменяет основание сохранённого Protected. При
+Checking, Paused, выключении и сбросе основания прежние IP/WARP не выдаются за
+доказательство текущего состояния. У выключенного детектора `isEnabled=false`,
+`state=disabled`, `lastCheck=null`, `explanation=null`, `tripwireActive=false`.
+
+`groups` в обоих ответах относится ко всему приложению. `assignedGroups` —
+назначение детектора, а `groups.active` — фактически включённые группы по
+последнему успешному согласованию. «Группа включена» означает активные правила
+блокировки. Неизвестное состояние — `known=false, active=null`, известное
+отсутствие включённых групп — `known=true, active=[]`. `observeOnly=true` сообщает
+режим наблюдения; `overall.hasStrictClosed` сам по себе не доказывает выполненную
+блокировку. `helperUnavailable` отражает признак координатора, а не проверку
+установленности helper. Новая проверка состояния LS командой не выполняется.
+
+Успех всегда выводится в stdout, ошибки — русским текстом в stderr с пустым
+stdout, в том числе с `--json`. Коды завершения:
+
+| Код | Значение |
+| --- | --- |
+| 0 | Статус прочитан или показана справка; Leak и Offline также дают 0 |
+| 1 | Прочая ошибка |
+| 2 | Неверная команда или аргументы |
+| 3 | Приложение недоступно, ответ оборван или истёк общий дедлайн 3 с |
+| 4 | Детектор с указанным ID отсутствует |
+| 5 | Несовместимая версия, некорректный ответ или превышение лимита сообщения |
+
+Для проверки защищённости в скрипте нужен разбор данных, например с установленным
+`jq`. Код CLI описывает получение статуса, а не результат проверки VPN:
+
+```bash
+if status_json=$(lsvpn status --json); then
+    printf '%s\n' "$status_json" | jq -e '.monitoring == "running" and .overall.hasEnabledDetectors and .overall.state == "protected"'
+else
+    exit "$?"
+fi
+```
+
+Приложение обслуживает локальный Unix-сокет `lsvpn/status.sock` в системном
+временном каталоге пользователя. Каталог 0700, сокет 0600, UID обеих сторон
+проверяется; процессы одного пользователя находятся в одной границе доверия.
+Нет сетевого порта, отдельного демона или расширения root-helper. Снимки не
+сохраняются на диск, из журнала статус не восстанавливается. Канал доступен при
+закрытых окнах и остановленном мониторинге; после выхода приложения CLI сообщает
+ошибку. Справка работает независимо от приложения. Дополнительные JSON-поля
+совместимы в пределах версии 1; изменение обязательных полей требует новой версии.

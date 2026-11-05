@@ -50,6 +50,9 @@ enum CompositionRoot {
                         lifecycle: lifecycle,
                         notifications: notifications,
                         settings: settings,
-                        detectorsOutcome: detectorsOutcome)
+                        detectorsOutcome: detectorsOutcome,
+                        statusService: StatusServiceLifecycle(
+                            server: StatusServer { try await coordinator.readStatus(detectorID: $0) },
+                            journal: journal, clock: SystemClock()))
     }
 }

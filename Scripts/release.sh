@@ -129,8 +129,11 @@ check_universal() {
 codesign --verify --deep --strict "$BUILT" || fail "подпись бандла не проходит проверку"
 check_signature "$BUILT" "бандл приложения"
 check_signature "$BUILT/Contents/MacOS/$HELPER_NAME" "встроенный helper"
+[ -x "$BUILT/Contents/MacOS/lsvpn" ] || fail "в бандле нет CLI статуса lsvpn"
+check_signature "$BUILT/Contents/MacOS/lsvpn" "CLI статуса"
 check_universal "$BUILT/Contents/MacOS/Little Snitch VPN Companion" "бинаре приложения"
 check_universal "$BUILT/Contents/MacOS/$HELPER_NAME" "бинаре helper"
+check_universal "$BUILT/Contents/MacOS/lsvpn" "бинаре CLI статуса"
 
 [ -f "$BUILT/Contents/Library/LaunchDaemons/$HELPER_NAME.plist" ] \
     || fail "в бандле нет launchd-plist демона — SMAppService такой бандл не зарегистрирует"

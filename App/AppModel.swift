@@ -76,6 +76,7 @@ final class AppModel {
     private let gateway: HelperRuleGroupGateway
     private let lifecycle: HelperLifecycle
     private let notifications: UserNotificationsPresenter
+    private let statusService: StatusServiceLifecycle?
     private let loginItem = LoginItemController()
     /// Presence-соединение строгого режима (D5): его пропажу helper считает
     /// сигналом dead-man's switch.
@@ -98,7 +99,8 @@ final class AppModel {
          lifecycle: HelperLifecycle,
          notifications: UserNotificationsPresenter,
          settings: AppSettings,
-         detectorsOutcome: DetectorsLoadOutcome? = nil) {
+         detectorsOutcome: DetectorsLoadOutcome? = nil,
+         statusService: StatusServiceLifecycle? = nil) {
         self.coordinator = coordinator
         self.settingsStore = settingsStore
         self.journal = journal
@@ -107,12 +109,14 @@ final class AppModel {
         self.notifications = notifications
         self.settings = settings
         self.detectorsOutcome = detectorsOutcome
+        self.statusService = statusService
         isOnboardingPresented = !OnboardingState.isCompleted
     }
 
     // MARK: - Жизненный цикл
 
     func start() async {
+        await statusService?.start()
         observerID = await coordinator.observe { [weak self] snapshot in
             Task { @MainActor in self?.snapshot = snapshot }
         }
@@ -259,6 +263,7 @@ final class AppModel {
     /// Завершение приложения (⌘Q, logout, выключение): координатор закрывает
     /// группы строгих детекторов перед смертью процесса.
     func prepareForTermination() async {
+        await statusService?.stop()
         await coordinator.prepareForTermination()
     }
 
