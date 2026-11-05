@@ -4,6 +4,7 @@ struct StatusClient: Sendable {
     var endpoint: StatusEndpoint?
     var timeout = 3.0
 
+    /// Синхронный вызов для CLI; из async-кода выполняется на отдельной очереди.
     func read(detectorID: String?) throws -> StatusDocument {
         let deadline = StatusSocket.deadline(seconds: timeout)
         let socket = try StatusSocket()

@@ -133,7 +133,15 @@ struct StatusServerTests {
             for index in 0..<8 {
                 group.addTask {
                     let id: String? = index.isMultiple(of: 2) ? nil : "one"
-                    let value = try StatusClient(endpoint: point).read(detectorID: id)
+                    // Каждый CLI — отдельный процесс. Блокирующее чтение в
+                    // cooperative executor заняло бы потоки поставщика статуса.
+                    let value: StatusDocument = try await withCheckedThrowingContinuation { continuation in
+                        DispatchQueue.global(qos: .utility).async {
+                            continuation.resume(with: Result {
+                                try StatusClient(endpoint: point).read(detectorID: id)
+                            })
+                        }
+                    }
                     try value.validate(detectorID: id)
                 }
             }
